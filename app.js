@@ -134,9 +134,9 @@
   }
 
   function detailPanel(item) {
-    if (!item) return `<div class="panel detail-panel empty"><div><div class="empty-icon">${icon("book", 26)}</div><h2>Chọn một case để xem</h2><p>Danh sách case và nội dung xử lý sẽ hiển thị tại đây.</p></div></div>`;
+    if (!item) return `<div id="case-detail-panel" class="panel detail-panel empty" tabindex="-1"><div><div class="empty-icon">${icon("book", 26)}</div><h2>Chọn một case để xem</h2><p>Danh sách case và nội dung xử lý sẽ hiển thị tại đây.</p></div></div>`;
     const steps = (item.resolution || "").split("\n").map((step) => step.trim()).filter(Boolean);
-    return `<article class="panel detail-panel">
+    return `<article id="case-detail-panel" class="panel detail-panel" tabindex="-1">
       <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 21)}</span><div><h2>${esc(item.title)}</h2>${tags(item.tags)}</div></div>
         <div class="detail-actions"><button class="button small" data-action="edit-case">${icon("edit", 14)} Chỉnh sửa</button><button class="button small" data-action="duplicate-case">${icon("copy", 14)} Nhân bản</button><button class="button small danger" data-action="delete-case">${icon("trash", 14)} Xóa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Thiết bị / Phần mềm</label><strong>${esc(item.device || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Hệ điều hành</label><strong>${esc(item.os || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Trạng thái</label><strong>${esc(item.status)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
@@ -255,6 +255,19 @@
     const restore = event.target.closest("[data-restore-case]"); if (restore) { const item = getCase(restore.dataset.restoreCase); if (item) { item.deleted = false; item.updatedAt = new Date().toISOString(); save(); render(); toast("Đã khôi phục case."); } return; }
     const editCategory = event.target.closest("[data-edit-category]"); if (editCategory) { const oldName = editCategory.dataset.editCategory; const next = window.prompt("Đổi tên danh mục:", oldName); if (next?.trim() && next.trim() !== oldName && !state.categories.includes(next.trim())) { const index = state.categories.indexOf(oldName); state.categories[index] = next.trim(); state.cases.forEach((item) => { if (item.category === oldName) item.category = next.trim(); }); save(); render(); toast("Đã cập nhật danh mục."); } return; }
     const removeTag = event.target.closest("[data-remove-tag]"); if (removeTag) { removeTag.closest(".tag")?.remove(); return; }
+  });
+  document.addEventListener("dblclick", (event) => {
+    const select = event.target.closest("[data-select-case]");
+    if (!select) return;
+    state.selectedId = select.dataset.selectCase;
+    if (state.view === "search") state.view = "cases";
+    render();
+    requestAnimationFrame(() => {
+      const detail = document.getElementById("case-detail-panel");
+      if (!detail) return;
+      detail.scrollIntoView({ behavior: "smooth", block: "start" });
+      detail.focus({ preventScroll: true });
+    });
   });
   document.addEventListener("input", (event) => {
     if (event.target.id === "case-search" || event.target.id === "global-search") { state.search = event.target.value; const id = event.target.id; render(); focusSearch(id); }
