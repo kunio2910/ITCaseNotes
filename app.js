@@ -345,14 +345,14 @@
       const id = select.dataset.selectCase;
       if (event.detail >= 2) { openCaseDetail(id); return; }
       clearTimeout(caseSelectionTimer);
-      caseSelectionTimer = setTimeout(() => { state.selectedId = id; if (state.view === "search") state.view = "cases"; render(); }, 220);
+      caseSelectionTimer = setTimeout(() => { state.selectedId = id; if (state.view === "search") state.view = "cases"; render(); }, 450);
       return;
     }
     const noteSelect = event.target.closest("[data-select-note]"); if (noteSelect) {
       const id = noteSelect.dataset.selectNote;
       if (event.detail >= 2) { openNoteDetail(id); return; }
       clearTimeout(noteSelectionTimer);
-      noteSelectionTimer = setTimeout(() => { state.noteSelectedId = id; render(); }, 220);
+      noteSelectionTimer = setTimeout(() => { state.noteSelectedId = id; render(); }, 450);
       return;
     }
     const action = event.target.closest("[data-action]")?.dataset.action;
