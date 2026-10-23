@@ -1,5 +1,7 @@
 (() => {
   const STORAGE_KEY = "it-case-notes-v1";
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbztFNsgy97o330lkOpT9zEpGuk2brnA5d29lHa9J4d9lCl2HM-A9i1BahruAqiv8VEAVA/exec";
+  const cloudState = { status: "Đang kết nối", syncing: false };
   const categoryColors = ["#287fd6", "#e89927", "#eb5d3f", "#7156c7", "#21a36d", "#3c526c", "#d34a8b", "#5c8c2f"];
 
   const seedCases = [
@@ -91,6 +93,55 @@
   };
 
   const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases: state.cases, notes: state.notes, categories: state.categories, theme: state.theme, pageSize: state.pageSize }));
+  async function cloudRequest(payload) {
+    if (!APPS_SCRIPT_URL) return null;
+    const response = await fetch(APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
+    if (!response.ok) throw new Error(`Apps Script trả về HTTP ${response.status}`);
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || "Apps Script không xử lý được yêu cầu");
+    return result;
+  }
+  function syncItem(action, item) {
+    if (!APPS_SCRIPT_URL || !item) return;
+    const payload = action === "upsertCategory" ? { action, name: item.name } : { action, item };
+    cloudRequest(payload).then(() => { cloudState.status = "Đã đồng bộ"; }).catch((error) => { cloudState.status = "Lỗi đồng bộ"; console.error(error); toast(`Không thể đồng bộ Google Sheet: ${error.message}`, "error"); });
+  }
+  async function syncAllToCloud() {
+    cloudState.syncing = true;
+    cloudState.status = "Đang đồng bộ";
+    try {
+      for (const name of state.categories) await cloudRequest({ action: "upsertCategory", name });
+      for (const item of state.cases) await cloudRequest({ action: "upsertCase", item });
+      for (const item of state.notes) await cloudRequest({ action: "upsertNote", item });
+      cloudState.status = "Đã đồng bộ";
+    } finally {
+      cloudState.syncing = false;
+    }
+  }
+  async function hydrateFromCloud() {
+    if (!APPS_SCRIPT_URL) return;
+    try {
+      const result = await cloudRequest({ action: "bootstrap" });
+      const remote = result?.data || {};
+      const hasRemoteData = Boolean(remote.cases?.length || remote.notes?.length || remote.categories?.length);
+      if (hasRemoteData) {
+        state.cases = Array.isArray(remote.cases) ? remote.cases : [];
+        state.notes = Array.isArray(remote.notes) ? remote.notes : [];
+        state.categories = remote.categories?.length ? remote.categories : defaultCategories;
+        state.selectedId = state.cases.find((item) => !item.deleted)?.id || null;
+        state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null;
+        save(); render();
+        cloudState.status = "Đã tải từ Google Sheet";
+      } else {
+        await syncAllToCloud();
+        toast("Đã đưa dữ liệu mẫu lên Google Sheet.");
+      }
+    } catch (error) {
+      cloudState.status = "Ngoại tuyến";
+      console.error(error);
+      toast(`Không tải được dữ liệu Google Sheet: ${error.message}`, "error");
+    }
+  }
   const activeCases = () => state.cases.filter((item) => !item.deleted);
   const activeNotes = () => state.notes.filter((item) => !item.deleted);
   const getCase = (id = state.selectedId) => state.cases.find((item) => item.id === id) || null;
@@ -137,7 +188,7 @@
         ${navButton("categories", "Danh mục", "folder", state.categories.length)}
         ${navButton("settings", "Cài đặt & Sao lưu", "settings", deletedCount ? `${deletedCount} đã xóa` : "")}
       </nav>
-      <div class="sidebar-footer">Lưu tự động trên thiết bị này<br />Phiên bản local · ${activeCases().length} case đang hoạt động</div>
+      <div class="sidebar-footer">Lưu cục bộ + Google Sheet<br />${cloudState.status} · ${activeCases().length} case đang hoạt động</div>
     </aside>`;
   }
 
@@ -282,6 +333,7 @@
       state.cases.unshift(item); state.selectedId = item.id; toast("Đã thêm case mới.");
     }
     state.pendingAttachments = []; state.editingId = null; state.view = "cases"; save(); render();
+    syncItem("upsertCase", state.cases.find((item) => item.id === state.selectedId));
   }
   function noteFormData() {
     const field = (id) => document.getElementById(id)?.value?.trim() || "";
@@ -301,6 +353,7 @@
       state.notes.unshift(item); state.noteSelectedId = item.id; toast("Đã thêm ghi chú mới.");
     }
     state.noteEditingId = null; state.view = "notes"; save(); render();
+    syncItem("upsertNote", state.notes.find((item) => item.id === state.noteSelectedId));
   }
   function parseTagsInput(event) {
     const input = event.target; if (event.key !== "Enter") return; event.preventDefault(); const value = input.value.trim(); if (!value) return; const editor = input.closest(".tag-input"); if (editor.querySelector(`[data-remove-tag="${CSS.escape(value)}"]`)) return; const tag = document.createElement("span"); tag.className = "tag"; tag.innerHTML = `${esc(value)} <button type="button" data-remove-tag="${esc(value)}" aria-label="Xóa tag">×</button>`; editor.insertBefore(tag, input); input.value = "";
@@ -319,7 +372,7 @@
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `it-case-notes-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url); toast("Đã xuất bản sao dữ liệu.");
   }
   function importData(file) {
-    const reader = new FileReader(); reader.onload = () => { try { const payload = JSON.parse(reader.result); if (!Array.isArray(payload.cases) || !Array.isArray(payload.categories)) throw new Error("invalid"); state.cases = payload.cases; state.notes = Array.isArray(payload.notes) ? payload.notes : []; state.categories = payload.categories; state.selectedId = state.cases.find((item) => !item.deleted)?.id || null; state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null; save(); render(); toast("Đã khôi phục dữ liệu từ bản sao."); } catch { toast("File sao lưu không đúng định dạng IT Case Notes.", "error"); } }; reader.readAsText(file);
+    const reader = new FileReader(); reader.onload = () => { try { const payload = JSON.parse(reader.result); if (!Array.isArray(payload.cases) || !Array.isArray(payload.categories)) throw new Error("invalid"); state.cases = payload.cases; state.notes = Array.isArray(payload.notes) ? payload.notes : []; state.categories = payload.categories; state.selectedId = state.cases.find((item) => !item.deleted)?.id || null; state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null; save(); render(); syncAllToCloud().then(() => toast("Đã khôi phục và đồng bộ dữ liệu lên Google Sheet.")).catch((error) => toast(`Đã khôi phục cục bộ nhưng đồng bộ thất bại: ${error.message}`, "error")); } catch { toast("File sao lưu không đúng định dạng IT Case Notes.", "error"); } }; reader.readAsText(file);
   }
 
   let caseSelectionTimer = null;
@@ -364,15 +417,15 @@
     if (action === "edit-note") { state.view = "note-form"; state.noteEditingId = state.noteSelectedId; render(); return; }
     if (action === "search-notes") { state.noteSearch = document.getElementById("note-search")?.value || state.noteSearch; state.view = "notes"; render(); return; }
     if (action === "edit-case") { state.view = "form"; state.editingId = state.selectedId; state.pendingAttachments = []; render(); return; }
-    if (action === "duplicate-case") { const original = getCase(); if (!original) return; const now = new Date().toISOString(); const copy = { ...original, id: uid(), title: `${original.title} (Bản sao)`, favorite: false, deleted: false, createdAt: now, updatedAt: now }; state.cases.unshift(copy); state.selectedId = copy.id; save(); render(); toast("Đã nhân bản case."); return; }
-    if (action === "delete-case") { const item = getCase(); if (!item) return; item.deleted = true; item.updatedAt = new Date().toISOString(); state.selectedId = activeCases()[0]?.id || null; save(); render(); toast("Đã chuyển case vào thùng rác."); return; }
+    if (action === "duplicate-case") { const original = getCase(); if (!original) return; const now = new Date().toISOString(); const copy = { ...original, id: uid(), title: `${original.title} (Bản sao)`, favorite: false, deleted: false, createdAt: now, updatedAt: now }; state.cases.unshift(copy); state.selectedId = copy.id; save(); render(); syncItem("upsertCase", copy); toast("Đã nhân bản case."); return; }
+    if (action === "delete-case") { const item = getCase(); if (!item) return; item.deleted = true; item.updatedAt = new Date().toISOString(); state.selectedId = activeCases()[0]?.id || null; save(); render(); syncItem("upsertCase", item); toast("Đã chuyển case vào thùng rác."); return; }
     if (action === "search") { state.search = document.getElementById("case-search")?.value || document.getElementById("global-search")?.value || state.search; state.view = state.view === "search" ? "search" : "cases"; render(); return; }
     if (action === "export") { exportData(); return; }
     if (action === "import") { document.getElementById("settings-import")?.click(); return; }
-    if (action === "add-category") { const value = window.prompt("Tên danh mục mới:"); if (value?.trim() && !state.categories.includes(value.trim())) { state.categories.push(value.trim()); save(); render(); toast("Đã thêm danh mục."); } return; }
+    if (action === "add-category") { const value = window.prompt("Tên danh mục mới:"); if (value?.trim() && !state.categories.includes(value.trim())) { state.categories.push(value.trim()); save(); render(); syncItem("upsertCategory", { name: value.trim() }); toast("Đã thêm danh mục."); } return; }
     if (event.target.closest("[data-copy-code]")) { navigator.clipboard?.writeText(event.target.closest("[data-copy-code]").dataset.copyCode); toast("Đã sao chép lệnh."); return; }
-    const restore = event.target.closest("[data-restore-case]"); if (restore) { const item = getCase(restore.dataset.restoreCase); if (item) { item.deleted = false; item.updatedAt = new Date().toISOString(); save(); render(); toast("Đã khôi phục case."); } return; }
-    const editCategory = event.target.closest("[data-edit-category]"); if (editCategory) { const oldName = editCategory.dataset.editCategory; const next = window.prompt("Đổi tên danh mục:", oldName); if (next?.trim() && next.trim() !== oldName && !state.categories.includes(next.trim())) { const index = state.categories.indexOf(oldName); state.categories[index] = next.trim(); state.cases.forEach((item) => { if (item.category === oldName) item.category = next.trim(); }); save(); render(); toast("Đã cập nhật danh mục."); } return; }
+    const restore = event.target.closest("[data-restore-case]"); if (restore) { const item = getCase(restore.dataset.restoreCase); if (item) { item.deleted = false; item.updatedAt = new Date().toISOString(); save(); render(); syncItem("upsertCase", item); toast("Đã khôi phục case."); } return; }
+    const editCategory = event.target.closest("[data-edit-category]"); if (editCategory) { const oldName = editCategory.dataset.editCategory; const next = window.prompt("Đổi tên danh mục:", oldName); if (next?.trim() && next.trim() !== oldName && !state.categories.includes(next.trim())) { const index = state.categories.indexOf(oldName); state.categories[index] = next.trim(); state.cases.forEach((item) => { if (item.category === oldName) item.category = next.trim(); }); save(); render(); syncItem("upsertCategory", { name: next.trim() }); state.cases.filter((item) => item.category === next.trim()).forEach((item) => syncItem("upsertCase", item)); toast("Đã cập nhật danh mục."); } return; }
     const removeTag = event.target.closest("[data-remove-tag]"); if (removeTag) { removeTag.closest(".tag")?.remove(); return; }
   });
   document.addEventListener("dblclick", (event) => {
@@ -398,4 +451,5 @@
   });
   document.addEventListener("submit", (event) => { if (event.target.id === "case-form") saveForm(event); if (event.target.id === "note-form") saveNoteForm(event); });
   save(); render();
+  hydrateFromCloud();
 })();

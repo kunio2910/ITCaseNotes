@@ -20,8 +20,10 @@ Sau đó truy cập `http://localhost:4173`.
 - Quản lý danh mục, trạng thái và tag.
 - Hỗ trợ lệnh CMD/PowerShell với nút sao chép.
 - Xem trước ảnh đính kèm và xuất/khôi phục bản sao lưu JSON.
-- Dữ liệu lưu tự động trong `localStorage`, không cần backend hoặc tài khoản.
+- Dữ liệu vẫn được lưu cục bộ trong `localStorage` để hỗ trợ offline và đồng bộ thêm lên Google Sheet qua Apps Script Web App.
 
 ## Ghi chú triển khai
 
-Đây là bản static frontend theo mockup trong tài liệu mô tả. Có thể đưa nguyên repo lên GitHub Pages hoặc nối thêm backend SQLite/Express ở giai đoạn sau.
+Đây là bản static frontend theo mockup trong tài liệu mô tả. `app.js` đã cấu hình Apps Script Web App để tải dữ liệu từ Google Sheet khi mở app, đưa dữ liệu mẫu lên nếu Sheet đang trống và đồng bộ các thao tác thêm/sửa/xóa mềm sau đó.
+
+Apps Script cần có các action `bootstrap`, `upsertCase`, `upsertNote` và `upsertCategory`, đồng thời lưu `SPREADSHEET_ID` trong Script Properties. Không đưa client secret hoặc API key vào repository.
