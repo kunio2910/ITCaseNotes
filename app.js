@@ -206,6 +206,31 @@
     return `<section class="detail-section ${type}"><div class="section-heading"><span class="section-icon">${icon(iconName, 13)}</span>${title}</div>${content}</section>`;
   }
 
+  function attachmentSource(file) {
+    return file?.src || file?.url || "";
+  }
+
+  function attachmentsMarkup(files = [], className = "attachments") {
+    if (!files.length) return "";
+    return `<div class="${className}">${files.map((file) => {
+      const source = attachmentSource(file);
+      const isImage = Boolean(source) && (file.type?.startsWith("image/") || /\.(avif|gif|jpe?g|png|svg|webp)([?#].*)?$/i.test(source) || source.startsWith("data:image/"));
+      return `<div class="attachment">${isImage ? `<img src="${esc(source)}" alt="${esc(file.name || "Ảnh đính kèm")}" loading="lazy" />` : `<span>${icon("image", 17)}${esc(file.name || "Tệp đính kèm")}</span>`}</div>`;
+    }).join("")}</div>`;
+  }
+
+  function attachmentEditor(itemAttachments = [], inputId = "attachment-input", urlInputId = "attachment-url", urlAction = "add-case-attachment-url") {
+    const files = state.pendingAttachments.length ? state.pendingAttachments : itemAttachments;
+    return `<section class="form-section attachment-section"><h3>${icon("image", 16)} Hình ảnh / Tệp đính kèm</h3>
+      <label class="dropzone" for="${inputId}">${icon("upload", 24)}<span><strong>Kéo thả file vào đây</strong><small>hoặc chọn file (PNG, JPG, PDF...)</small></span><input id="${inputId}" type="file" multiple accept="image/*,.pdf,.txt,.log" /></label>
+      <div class="attachment-url-field"><label for="${urlInputId}">URL hình ảnh</label><div class="attachment-url-row"><input id="${urlInputId}" type="url" placeholder="https://example.com/image.png" /><button type="button" class="button small" data-action="${urlAction}">${icon("plus", 13)} Thêm ảnh</button></div><p class="field-help">Ảnh từ URL cần cho phép truy cập trực tiếp.</p></div>
+      ${attachmentsMarkup(files, "pending-files")}</section>`;
+  }
+
+  function formExistingAttachments() {
+    return state.view === "note-form" ? getNote(state.noteEditingId)?.attachments || [] : getCase(state.editingId)?.attachments || [];
+  }
+
   function detailPanel(item) {
     if (!item) return `<div id="case-detail-panel" class="panel detail-panel empty" tabindex="-1"><div><div class="empty-icon">${icon("book", 26)}</div><h2>Chọn một case để xem</h2><p>Danh sách case và nội dung xử lý sẽ hiển thị tại đây.</p></div></div>`;
     const steps = (item.resolution || "").split("\n").map((step) => step.trim()).filter(Boolean);
@@ -216,7 +241,7 @@
       ${detailSection("symptom", "Triệu chứng", `<p>${esc(item.symptoms || "Chưa ghi nhận")}</p>`, "alert")}
       ${detailSection("cause", "Nguyên nhân", `<p>${esc(item.cause || "Chưa xác minh")}</p>`, "help")}
       ${detailSection("resolution", "Các bước xử lý", `<ol class="steps">${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>${item.commands ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check")}
-      ${detailSection("result", "Kết quả / Ghi chú", `<p>${esc(item.result || "Chưa cập nhật")}</p>${item.attachments?.length ? `<div class="attachments">${item.attachments.map((file) => `<div class="attachment">${file.src ? `<img src="${file.src}" alt="${esc(file.name)}" />` : `<span>${icon("image", 17)}${esc(file.name)}</span>`}</div>`).join("")}</div>` : ""}`, "info")}
+      ${detailSection("result", "Kết quả / Ghi chú", `<p>${esc(item.result || "Chưa cập nhật")}</p>${attachmentsMarkup(item.attachments || [])}`, "info")}
     </article>`;
   }
 
@@ -256,9 +281,9 @@
       <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon("book", 21)}</span><div><h2>${esc(item.title)}</h2>${tags([item.category, item.noteName])}</div></div>
         <div class="detail-actions"><button class="button small" data-action="edit-note">${icon("edit", 14)} Chỉnh sửa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Danh mục</label><strong>${esc(item.category)}</strong></div><div class="info-item"><label>Tên ghi chú</label><strong>${esc(item.noteName)}</strong></div><div class="info-item"><label>Tạo ngày</label><strong>${formatDate(item.createdAt)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
-      ${detailSection("note-section", "Nội dung ghi chú", `<p>${esc(item.content || "Chưa cập nhật")}</p>`, "book")}
+      ${detailSection("note-section note-content-panel", "Nội dung ghi chú", `<p>${esc(item.content || "Chưa cập nhật")}</p>`, "book")}
       ${item.commands ? detailSection("note-section note-command-section", "Lệnh CMD / PowerShell", `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>`, "command") : ""}
-      ${detailSection("note-section note-result-section", "Kết quả và ghi chú", `<p>${esc(item.result || "Chưa cập nhật")}</p>`, "info")}
+      ${detailSection("note-section note-result-panel", "Kết quả và ghi chú", `<p>${esc(item.result || "Chưa cập nhật")}</p>${attachmentsMarkup(item.attachments || [], "note-attachments")}`, "info")}
     </article>`;
   }
 
@@ -275,9 +300,9 @@
   }
 
   function noteFormPage() {
-    const item = getNote(state.noteEditingId) || { title: "", category: state.categories[0], noteName: "", content: "", commands: "", result: "" };
+    const item = getNote(state.noteEditingId) || { title: "", category: state.categories[0], noteName: "", content: "", commands: "", result: "", attachments: [] };
     const isEdit = Boolean(state.noteEditingId);
-    return `<div class="page note-form-page">${topHeading(isEdit ? "Chỉnh sửa ghi chú" : "Thêm ghi chú", isEdit ? "Cập nhật nội dung ghi chú và lệnh cần nhớ" : "Lưu nhanh kiến thức hoặc lệnh hỗ trợ IT để tra cứu lại", `<button class="button" data-action="back-to-notes">${icon("back", 14)} Quay lại ghi chú</button>`)}<form id="note-form" class="panel form-panel note-form"><section class="form-section"><h3>${icon("book", 16)} Thông tin ghi chú</h3><div class="form-grid"><div class="field full"><label for="note-title">Tiêu đề <span class="required">*</span></label><input id="note-title" required value="${esc(item.title)}" placeholder="Ví dụ: Kiểm tra Print Spooler" /></div><div class="field"><label for="note-category">Danh mục</label><select id="note-category" class="select">${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="note-name">Tên ghi chú <span class="required">*</span></label><input id="note-name" required value="${esc(item.noteName)}" placeholder="Ví dụ: Print Spooler" /></div><div class="field full"><label for="note-content">Nội dung ghi chú <span class="required">*</span></label><textarea id="note-content" class="tall" required placeholder="Ghi nội dung cần nhớ...">${esc(item.content)}</textarea></div><div class="field full"><label for="note-commands">Lệnh CMD / PowerShell</label><textarea id="note-commands" placeholder="Có thể sao chép trực tiếp khi cần...">${esc(item.commands || "")}</textarea></div><div class="field full"><label for="note-result">Kết quả và ghi chú</label><textarea id="note-result" placeholder="Kết quả, lưu ý hoặc điều kiện áp dụng...">${esc(item.result || "")}</textarea></div></div></section><div class="form-footer"><button type="button" class="button" data-action="back-to-notes">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu ghi chú"}</button></div></form></div>`;
+    return `<div class="page note-form-page">${topHeading(isEdit ? "Chỉnh sửa ghi chú" : "Thêm ghi chú", isEdit ? "Cập nhật nội dung ghi chú và lệnh cần nhớ" : "Lưu nhanh kiến thức hoặc lệnh hỗ trợ IT để tra cứu lại", `<button class="button" data-action="back-to-notes">${icon("back", 14)} Quay lại ghi chú</button>`)}<form id="note-form" class="panel form-panel note-form"><div class="form-layout"><div><section class="form-section"><h3>${icon("book", 16)} Thông tin ghi chú</h3><div class="form-grid"><div class="field full"><label for="note-title">Tiêu đề <span class="required">*</span></label><input id="note-title" required value="${esc(item.title)}" placeholder="Ví dụ: Kiểm tra Print Spooler" /></div><div class="field"><label for="note-category">Danh mục</label><select id="note-category" class="select">${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="note-name">Tên ghi chú <span class="required">*</span></label><input id="note-name" required value="${esc(item.noteName)}" placeholder="Ví dụ: Print Spooler" /></div><div class="field full"><label for="note-content">Nội dung ghi chú <span class="required">*</span></label><textarea id="note-content" class="tall" required placeholder="Ghi nội dung cần nhớ...">${esc(item.content)}</textarea></div><div class="field full"><label for="note-commands">Lệnh CMD / PowerShell</label><textarea id="note-commands" placeholder="Có thể sao chép trực tiếp khi cần...">${esc(item.commands || "")}</textarea></div><div class="field full"><label for="note-result">Kết quả và ghi chú</label><textarea id="note-result" placeholder="Kết quả, lưu ý hoặc điều kiện áp dụng...">${esc(item.result || "")}</textarea></div></div></section></div><aside class="form-side">${attachmentEditor(item.attachments || [], "note-attachment-input", "note-attachment-url", "add-note-attachment-url")}</aside></div><div class="form-footer"><button type="button" class="button" data-action="back-to-notes">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu ghi chú"}</button></div></form></div>`;
   }
 
   function tagsEditor(values = []) {
@@ -287,8 +312,7 @@
   function formPage() {
     const item = getCase(state.editingId) || { title: "", category: state.categories[0], status: "Đang xác minh", device: "", os: "", symptoms: "", cause: "", resolution: "", commands: "", result: "", tags: [], attachments: [] };
     const isEdit = Boolean(state.editingId);
-    const files = state.pendingAttachments.length ? state.pendingAttachments : item.attachments || [];
-    return `<div class="page">${topHeading(isEdit ? "Chỉnh sửa case" : "Thêm case mới", isEdit ? "Cập nhật nguyên nhân, giải pháp hoặc ghi chú cho case" : "Ghi lại sự cố và các bước xử lý để dùng lại sau này", `<button class="button" data-action="cancel-form">${icon("back", 14)} Quay lại</button>`)}<form id="case-form" class="panel form-panel"><div class="form-layout"><div><section class="form-section"><h3>${icon("info", 16)} Thông tin case</h3><div class="form-grid"><div class="field full"><label for="title">Tiêu đề <span class="required">*</span></label><input id="title" required value="${esc(item.title)}" placeholder="Ví dụ: Không thể kết nối máy in qua USB" /></div><div class="field"><label for="category">Danh mục <span class="required">*</span></label><select id="category" class="select" required>${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="status">Trạng thái</label><select id="status" class="select"><option ${item.status === "Đang xác minh" ? "selected" : ""}>Đang xác minh</option><option ${item.status === "Đã xử lý" ? "selected" : ""}>Đã xử lý</option></select></div><div class="field"><label for="device">Thiết bị / Phần mềm</label><input id="device" value="${esc(item.device)}" placeholder="HP M211dw, Outlook..." /></div><div class="field"><label for="os">Hệ điều hành</label><input id="os" value="${esc(item.os)}" placeholder="Windows 11 25H2" /></div><div class="field full"><label for="symptoms">Triệu chứng <span class="required">*</span></label><textarea id="symptoms" required placeholder="Mô tả dấu hiệu, thông báo lỗi...">${esc(item.symptoms)}</textarea></div><div class="field full"><label for="cause">Nguyên nhân</label><textarea id="cause" placeholder="Có thể ghi nguyên nhân chưa xác minh để cập nhật sau...">${esc(item.cause)}</textarea></div></div></section><section class="form-section"><h3>${icon("check", 16)} Cách xử lý <span class="required">*</span></h3><div class="field"><label for="resolution">Các bước xử lý (mỗi dòng là một bước)</label><textarea id="resolution" class="tall" required placeholder="1. Kiểm tra...\n2. Cài lại...">${esc(item.resolution)}</textarea></div><div class="field" style="margin-top:13px"><label for="commands">Lệnh CMD / PowerShell</label><textarea id="commands" placeholder="Có thể sao chép trực tiếp khi xử lý...">${esc(item.commands || "")}</textarea></div></section><section class="form-section"><h3>${icon("info", 16)} Kết quả và ghi chú</h3><div class="field"><label for="result">Kết quả / Ghi chú</label><textarea id="result" placeholder="Kết quả sau khi xử lý, lưu ý cho lần sau...">${esc(item.result || "")}</textarea></div></section></div><aside class="form-side"><section class="form-section"><h3>${icon("folder", 16)} Tag / Từ khóa</h3><div class="field">${tagsEditor(item.tags || [])}<p class="field-help">Tag giúp tìm kiếm case nhanh hơn.</p></div></section><section class="form-section"><h3>${icon("image", 16)} Hình ảnh / Tệp đính kèm</h3><label class="dropzone" for="attachment-input">${icon("upload", 24)}<span><strong>Kéo thả file vào đây</strong><small>hoặc chọn file (PNG, JPG, PDF...)</small></span><input id="attachment-input" type="file" multiple accept="image/*,.pdf,.txt,.log" /></label><div class="pending-files">${files.map((file) => `<div class="pending-file">${file.src ? `<img src="${file.src}" alt="" />` : icon("image", 17)}<span>${esc(file.name)}</span></div>`).join("")}</div></section></aside></div><div class="form-footer"><button type="button" class="button" data-action="cancel-form">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu case"}</button></div></form></div>`;
+    return `<div class="page">${topHeading(isEdit ? "Chỉnh sửa case" : "Thêm case mới", isEdit ? "Cập nhật nguyên nhân, giải pháp hoặc ghi chú cho case" : "Ghi lại sự cố và các bước xử lý để dùng lại sau này", `<button class="button" data-action="cancel-form">${icon("back", 14)} Quay lại</button>`)}<form id="case-form" class="panel form-panel"><div class="form-layout"><div><section class="form-section"><h3>${icon("info", 16)} Thông tin case</h3><div class="form-grid"><div class="field full"><label for="title">Tiêu đề <span class="required">*</span></label><input id="title" required value="${esc(item.title)}" placeholder="Ví dụ: Không thể kết nối máy in qua USB" /></div><div class="field"><label for="category">Danh mục <span class="required">*</span></label><select id="category" class="select" required>${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="status">Trạng thái</label><select id="status" class="select"><option ${item.status === "Đang xác minh" ? "selected" : ""}>Đang xác minh</option><option ${item.status === "Đã xử lý" ? "selected" : ""}>Đã xử lý</option></select></div><div class="field"><label for="device">Thiết bị / Phần mềm</label><input id="device" value="${esc(item.device)}" placeholder="HP M211dw, Outlook..." /></div><div class="field"><label for="os">Hệ điều hành</label><input id="os" value="${esc(item.os)}" placeholder="Windows 11 25H2" /></div><div class="field full"><label for="symptoms">Triệu chứng <span class="required">*</span></label><textarea id="symptoms" required placeholder="Mô tả dấu hiệu, thông báo lỗi...">${esc(item.symptoms)}</textarea></div><div class="field full"><label for="cause">Nguyên nhân</label><textarea id="cause" placeholder="Có thể ghi nguyên nhân chưa xác minh để cập nhật sau...">${esc(item.cause)}</textarea></div></div></section><section class="form-section"><h3>${icon("check", 16)} Cách xử lý <span class="required">*</span></h3><div class="field"><label for="resolution">Các bước xử lý (mỗi dòng là một bước)</label><textarea id="resolution" class="tall" required placeholder="1. Kiểm tra...\n2. Cài lại...">${esc(item.resolution)}</textarea></div><div class="field" style="margin-top:13px"><label for="commands">Lệnh CMD / PowerShell</label><textarea id="commands" placeholder="Có thể sao chép trực tiếp khi xử lý...">${esc(item.commands || "")}</textarea></div></section><section class="form-section"><h3>${icon("info", 16)} Kết quả và ghi chú</h3><div class="field"><label for="result">Kết quả / Ghi chú</label><textarea id="result" placeholder="Kết quả sau khi xử lý, lưu ý cho lần sau...">${esc(item.result || "")}</textarea></div></section></div><aside class="form-side"><section class="form-section"><h3>${icon("folder", 16)} Tag / Từ khóa</h3><div class="field">${tagsEditor(item.tags || [])}<p class="field-help">Tag giúp tìm kiếm case nhanh hơn.</p></div></section>${attachmentEditor(item.attachments || [])}</aside></div><div class="form-footer"><button type="button" class="button" data-action="cancel-form">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu case"}</button></div></form></div>`;
   }
 
   function searchPage() {
@@ -337,7 +361,7 @@
   }
   function noteFormData() {
     const field = (id) => document.getElementById(id)?.value?.trim() || "";
-    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result") };
+    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), attachments: state.pendingAttachments };
   }
   function saveNoteForm(event) {
     event.preventDefault();
@@ -346,10 +370,10 @@
     const now = new Date().toISOString();
     if (state.noteEditingId) {
       const index = state.notes.findIndex((item) => item.id === state.noteEditingId);
-      state.notes[index] = { ...state.notes[index], ...data, updatedAt: now };
+      state.notes[index] = { ...state.notes[index], ...data, attachments: data.attachments.length ? data.attachments : state.notes[index].attachments || [], updatedAt: now };
       state.noteSelectedId = state.noteEditingId; toast("Đã lưu thay đổi cho ghi chú.");
     } else {
-      const item = { ...data, id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: now, updatedAt: now, deleted: false };
+      const item = { ...data, id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: now, updatedAt: now, deleted: false, attachments: data.attachments || [] };
       state.notes.unshift(item); state.noteSelectedId = item.id; toast("Đã thêm ghi chú mới.");
     }
     state.noteEditingId = null; state.view = "notes"; save(); render();
@@ -360,12 +384,27 @@
   }
   async function readAttachments(files) {
     const selected = [...files].slice(0, 6);
-    state.pendingAttachments = [];
+    const existing = state.pendingAttachments.length ? state.pendingAttachments : formExistingAttachments();
+    state.pendingAttachments = [...existing];
     for (const file of selected) {
       const src = file.type.startsWith("image/") ? await new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(file); }) : "";
       state.pendingAttachments.push({ name: file.name, src });
     }
     render(); toast(`${state.pendingAttachments.length} tệp đã sẵn sàng đính kèm.`);
+  }
+
+  function addAttachmentUrl(inputId) {
+    const input = document.getElementById(inputId);
+    const url = input?.value.trim() || "";
+    if (!/^https?:\/\/[^\s]+$/i.test(url)) {
+      toast("Vui lòng nhập URL hình ảnh hợp lệ.", "error");
+      return;
+    }
+    const existing = state.pendingAttachments.length ? state.pendingAttachments : formExistingAttachments();
+    const name = decodeURIComponent(url.split("/").pop()?.split("?")[0] || "Ảnh từ URL");
+    state.pendingAttachments = [...existing, { name, src: url, url, type: "image/url" }];
+    render();
+    toast("Đã thêm ảnh từ URL.");
   }
   function exportData() {
     const payload = { format: "IT Case Notes backup", version: 2, exportedAt: new Date().toISOString(), categories: state.categories, cases: state.cases, notes: state.notes };
@@ -410,11 +449,13 @@
     }
     const action = event.target.closest("[data-action]")?.dataset.action;
     if (action === "add-case") { state.view = "form"; state.editingId = null; state.pendingAttachments = []; render(); return; }
+    if (action === "add-case-attachment-url") { addAttachmentUrl("attachment-url"); return; }
+    if (action === "add-note-attachment-url") { addAttachmentUrl("note-attachment-url"); return; }
     if (action === "cancel-form") { state.view = "cases"; state.editingId = null; state.pendingAttachments = []; render(); return; }
     if (action === "back-to-cases") { state.view = "cases"; render(); return; }
-    if (action === "add-note") { state.view = "note-form"; state.noteEditingId = null; render(); return; }
+    if (action === "add-note") { state.view = "note-form"; state.noteEditingId = null; state.pendingAttachments = []; render(); return; }
     if (action === "back-to-notes") { state.view = "notes"; state.noteEditingId = null; render(); return; }
-    if (action === "edit-note") { state.view = "note-form"; state.noteEditingId = state.noteSelectedId; render(); return; }
+    if (action === "edit-note") { state.view = "note-form"; state.noteEditingId = state.noteSelectedId; state.pendingAttachments = []; render(); return; }
     if (action === "search-notes") { state.noteSearch = document.getElementById("note-search")?.value || state.noteSearch; state.view = "notes"; render(); return; }
     if (action === "edit-case") { state.view = "form"; state.editingId = state.selectedId; state.pendingAttachments = []; render(); return; }
     if (action === "duplicate-case") { const original = getCase(); if (!original) return; const now = new Date().toISOString(); const copy = { ...original, id: uid(), title: `${original.title} (Bản sao)`, favorite: false, deleted: false, createdAt: now, updatedAt: now }; state.cases.unshift(copy); state.selectedId = copy.id; save(); render(); syncItem("upsertCase", copy); toast("Đã nhân bản case."); return; }
