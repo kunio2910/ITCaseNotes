@@ -97,7 +97,21 @@ h3 { margin-bottom: 4px; color: var(--navy-900); font-size: 14px; }
 .tag.red { color: #b43c3c; background: #ffe4e4; }
 .tag.purple { color: #7352be; background: #efe6ff; }
 .star { color: #d8a522; }
+.star svg { fill: currentColor; }
 .star.off { color: #a7b4c1; }
+.favorite-toggle { position: relative; z-index: 2; display: inline-grid; place-items: center; width: 28px; height: 28px; margin: -5px -5px -5px auto; border-radius: 7px; cursor: pointer; }
+.favorite-toggle:hover, .favorite-toggle:focus-visible { background: #fff3c9; outline: 0; }
+.favorite-toggle:focus-visible { box-shadow: 0 0 0 3px rgba(216,165,34,.28); }
+.favorite-active { color: #9c7100; border-color: #e7c66d; background: #fff8df; }
+.favorite-total { display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border-radius: 9px; color: #9c7100; background: #fff4cf; font-size: 12px; font-weight: 800; }
+.favorites-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+.favorite-group { min-width: 0; overflow: hidden; }
+.favorite-group-heading { padding: 16px 16px 11px; border-bottom: 1px solid #edf1f5; }
+.favorite-group-heading > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.favorite-group-heading h2 { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--navy-900); font-size: 15px; }
+.favorite-group-heading span { color: var(--muted); font-size: 11px; }
+.favorite-group .case-list { max-height: calc(100vh - 280px); }
+.compact-empty { min-height: 210px; }
 
 .detail-panel { min-height: calc(100vh - 156px); padding: 22px; }
 .detail-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 17px; }
@@ -134,6 +148,9 @@ h3 { margin-bottom: 4px; color: var(--navy-900); font-size: 14px; }
 .copy-code { position: absolute; top: 7px; right: 7px; border: 0; border-radius: 6px; padding: 5px; color: #c8e3fb; background: rgba(255,255,255,.1); }
 .attachments { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 11px; }
 .attachment { position: relative; width: 110px; height: 74px; overflow: hidden; border: 1px solid #d4e0eb; border-radius: 8px; background: #f6f9fb; }
+.attachment-image { cursor: zoom-in; transition: .18s ease; }
+.attachment-image:hover { border-color: #7cb2e6; box-shadow: 0 5px 16px rgba(20,120,232,.18); transform: translateY(-1px); }
+.attachment-image:focus-visible { outline: 3px solid rgba(20,120,232,.28); outline-offset: 2px; }
 .attachment img { width: 100%; height: 100%; object-fit: cover; }
 .attachment span { display: grid; place-items: center; width: 100%; height: 100%; padding: 7px; color: var(--muted); font-size: 11px; text-align: center; }
 .empty { display: grid; place-items: center; min-height: 300px; padding: 36px; color: var(--muted); text-align: center; }
@@ -168,6 +185,10 @@ h3 { margin-bottom: 4px; color: var(--navy-900); font-size: 14px; }
 .pending-file { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid #e1eaf2; border-radius: 7px; color: #4c6175; background: #fff; font-size: 11px; }
 .pending-file img { width: 42px; height: 34px; border-radius: 5px; object-fit: cover; }
 .note-attachments { margin-top: 12px; padding-top: 11px; border-top: 1px solid rgba(53,183,125,.22); }
+.image-lightbox { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 28px; background: rgba(5, 18, 31, .78); cursor: zoom-out; }
+.image-lightbox-content { position: relative; max-width: min(92vw, 1100px); max-height: 90vh; padding: 8px; border-radius: 13px; background: #fff; box-shadow: 0 22px 70px rgba(0,0,0,.35); cursor: default; }
+.image-lightbox-content img { display: block; max-width: 88vw; max-height: 84vh; border-radius: 8px; object-fit: contain; }
+.image-lightbox-close { position: absolute; top: -13px; right: -13px; z-index: 1; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 2px solid #fff; border-radius: 50%; color: #fff; background: #163c60; font-size: 23px; line-height: 1; box-shadow: 0 5px 16px rgba(0,0,0,.25); }
 .tag-input { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 39px; padding: 5px 8px; border: 1px solid #cbd9e7; border-radius: 8px; }
 .tag-input:focus-within { border-color: var(--blue-600); box-shadow: 0 0 0 3px rgba(20,120,232,.12); }
 .tag-input input { min-width: 100px; flex: 1; height: 27px; border: 0; outline: 0; font-size: 12px; }
@@ -224,6 +245,9 @@ h3 { margin-bottom: 4px; color: var(--navy-900); font-size: 14px; }
 [data-theme="dark"] .detail-section.note-command-section { border-color: #544a97; background: linear-gradient(135deg, #27234d, #211e40); }
 [data-theme="dark"] .detail-section.note-result-panel { border-color: #2a7757; background: linear-gradient(135deg, #173f31, #143629); }
 [data-theme="dark"] .attachment-url-row input { border-color: #36516a; color: var(--ink); background: #0d2032; }
+[data-theme="dark"] .favorite-total, [data-theme="dark"] .favorite-toggle:hover, [data-theme="dark"] .favorite-toggle:focus-visible, [data-theme="dark"] .favorite-active { color: #ffe39a; border-color: #8e7227; background: #3e3518; }
+[data-theme="dark"] .favorite-group-heading { border-color: #2b4258; }
+[data-theme="dark"] .image-lightbox-content { background: #12283c; }
 [data-theme="dark"] .info-item strong, [data-theme="dark"] .form-section h3, [data-theme="dark"] .category-card strong { color: #e6f1fb; }
 
 @media (max-width: 1050px) {
@@ -243,6 +267,7 @@ h3 { margin-bottom: 4px; color: var(--navy-900); font-size: 14px; }
   .nav-button .count, .sidebar-footer { display: none; }
   .main { padding: 20px 14px 28px; }
   .workspace-grid { grid-template-columns: 1fr; }
+  .favorites-grid { grid-template-columns: 1fr; }
   .case-list { max-height: 420px; }
   .detail-panel { min-height: 0; }
   .categories-grid, .settings-grid { grid-template-columns: 1fr 1fr; }
@@ -274,6 +299,7 @@ h3 { margin-bottom: 4px; color: var(--navy-900); font-size: 14px; }
   .search-result .tag-row { grid-column: 2; }
   .detail-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .detail-actions .button:last-child { grid-column: 1 / -1; }
+  .favorite-total { margin-top: 3px; }
   .detail-title h2 { font-size: 18px; }
   .detail-section { padding: 13px; }
   .attachment { width: calc(50% - 5px); min-width: 118px; }

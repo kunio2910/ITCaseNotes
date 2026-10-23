@@ -37,10 +37,10 @@
 
   const seedNotes = [
     {
-      id: "note-001", title: "Kiểm tra và khởi động lại Print Spooler", category: "Windows", noteName: "Print Spooler", content: "Ghi nhớ nhanh các bước kiểm tra khi máy in không nhận lệnh in hoặc bị treo hàng đợi.", commands: "Get-Service Spooler\nRestart-Service Spooler", result: "Dịch vụ chạy lại bình thường, có thể tiếp tục kiểm tra driver nếu lỗi còn tiếp diễn.", attachments: [], createdAt: "2026-10-21T08:30:00+07:00", updatedAt: "2026-10-22T09:15:00+07:00", deleted: false
+      id: "note-001", title: "Kiểm tra và khởi động lại Print Spooler", category: "Windows", noteName: "Print Spooler", content: "Ghi nhớ nhanh các bước kiểm tra khi máy in không nhận lệnh in hoặc bị treo hàng đợi.", commands: "Get-Service Spooler\nRestart-Service Spooler", result: "Dịch vụ chạy lại bình thường, có thể tiếp tục kiểm tra driver nếu lỗi còn tiếp diễn.", favorite: false, attachments: [], createdAt: "2026-10-21T08:30:00+07:00", updatedAt: "2026-10-22T09:15:00+07:00", deleted: false
     },
     {
-      id: "note-002", title: "Làm sạch DNS trên máy người dùng", category: "Mạng / Internet", noteName: "DNS nhanh", content: "Dùng khi người dùng không truy cập được website hoặc dịch vụ nội bộ sau khi thay đổi mạng.", commands: "ipconfig /flushdns\nipconfig /renew", result: "Kiểm tra lại bằng trình duyệt ẩn danh sau khi chạy lệnh.", attachments: [], createdAt: "2026-10-19T14:10:00+07:00", updatedAt: "2026-10-19T14:10:00+07:00", deleted: false
+      id: "note-002", title: "Làm sạch DNS trên máy người dùng", category: "Mạng / Internet", noteName: "DNS nhanh", content: "Dùng khi người dùng không truy cập được website hoặc dịch vụ nội bộ sau khi thay đổi mạng.", commands: "ipconfig /flushdns\nipconfig /renew", result: "Kiểm tra lại bằng trình duyệt ẩn danh sau khi chạy lệnh.", favorite: false, attachments: [], createdAt: "2026-10-19T14:10:00+07:00", updatedAt: "2026-10-19T14:10:00+07:00", deleted: false
     }
   ];
 
@@ -89,7 +89,7 @@
     categories: stored?.categories?.length ? stored.categories : defaultCategories,
     view: "cases", selectedId: stored?.cases?.find((item) => !item.deleted)?.id || seedCases[0].id, editingId: null, search: "", category: "Tất cả", status: "Tất cả", time: "Mới nhất",
     noteSelectedId: stored?.notes?.find((item) => !item.deleted)?.id || seedNotes[0].id, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả",
-    theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: []
+    theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], lightbox: null
   };
 
   const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases: state.cases, notes: state.notes, categories: state.categories, theme: state.theme, pageSize: state.pageSize }));
@@ -144,6 +144,9 @@
   }
   const activeCases = () => state.cases.filter((item) => !item.deleted);
   const activeNotes = () => state.notes.filter((item) => !item.deleted);
+  const favoriteCases = () => activeCases().filter((item) => item.favorite);
+  const favoriteNotes = () => activeNotes().filter((item) => item.favorite);
+  const favoriteCount = () => favoriteCases().length + favoriteNotes().length;
   const getCase = (id = state.selectedId) => state.cases.find((item) => item.id === id) || null;
   const getNote = (id = state.noteSelectedId) => state.notes.find((item) => item.id === id) || null;
   const matches = (item, search = state.search) => {
@@ -178,12 +181,12 @@
   }
 
   function renderSidebar() {
-    const deletedCount = state.cases.filter((item) => item.deleted).length;
+    const deletedCount = state.cases.filter((item) => item.deleted).length + state.notes.filter((item) => item.deleted).length;
     return `<aside class="sidebar">
       <div class="brand"><span class="brand-mark">${icon("book", 21)}</span><div><strong>IT Case Notes</strong><small>Sổ tay xử lý sự cố IT</small></div></div>
       <nav class="nav" aria-label="Điều hướng chính">
         ${navButton("cases", "Tất cả case", "grid", activeCases().length)}
-        ${navButton("favorites", "Yêu thích", "star", state.cases.filter((item) => item.favorite && !item.deleted).length)}
+        ${navButton("favorites", "Yêu thích", "star", favoriteCount())}
         ${navButton("notes", "Ghi chú", "book", activeNotes().length)}
         ${navButton("categories", "Danh mục", "folder", state.categories.length)}
         ${navButton("settings", "Cài đặt & Sao lưu", "settings", deletedCount ? `${deletedCount} đã xóa` : "")}
@@ -196,7 +199,7 @@
 
   function caseCard(item) {
     return `<button class="case-card ${state.selectedId === item.id ? "selected" : ""}" data-select-case="${item.id}">
-      <div class="case-card-title">${icon(item.category === "Máy in" ? "printer" : "windows", 17)}<span>${esc(item.title)}</span><span class="star ${item.favorite ? "" : "off"}">${icon("star", 15)}</span></div>
+      <div class="case-card-title">${icon(item.category === "Máy in" ? "printer" : "windows", 17)}<span>${esc(item.title)}</span><span class="star favorite-toggle ${item.favorite ? "" : "off"}" role="button" tabindex="0" aria-label="${item.favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}" data-action="toggle-case-favorite" data-id="${item.id}">${icon("star", 15)}</span></div>
       <p class="case-card-summary">${esc(item.symptoms.split("\n")[0])}</p>
       <div class="case-card-meta">${tags(item.tags.slice(0, 4))}<span>${formatDate(item.updatedAt)}</span></div>
     </button>`;
@@ -215,7 +218,8 @@
     return `<div class="${className}">${files.map((file) => {
       const source = attachmentSource(file);
       const isImage = Boolean(source) && (file.type?.startsWith("image/") || /\.(avif|gif|jpe?g|png|svg|webp)([?#].*)?$/i.test(source) || source.startsWith("data:image/"));
-      return `<div class="attachment">${isImage ? `<img src="${esc(source)}" alt="${esc(file.name || "Ảnh đính kèm")}" loading="lazy" />` : `<span>${icon("image", 17)}${esc(file.name || "Tệp đính kèm")}</span>`}</div>`;
+      const alt = file.name || "Ảnh đính kèm";
+      return `<div class="attachment ${isImage ? "attachment-image" : ""}" ${isImage ? `role="button" tabindex="0" aria-label="Phóng to ${esc(alt)}" data-action="open-image" data-image-src="${esc(source)}" data-image-alt="${esc(alt)}"` : ""}>${isImage ? `<img src="${esc(source)}" alt="${esc(alt)}" loading="lazy" />` : `<span>${icon("image", 17)}${esc(alt)}</span>`}</div>`;
     }).join("")}</div>`;
   }
 
@@ -253,13 +257,19 @@
     return `<div class="toolbar"><div class="search-row"><label class="search-input">${icon("search", 17)}<input id="case-search" type="search" value="${esc(state.search)}" placeholder="Tìm lỗi, thiết bị, nguyên nhân, cách xử lý..." aria-label="Tìm kiếm case" /></label><button class="button primary" data-action="search">${icon("search", 15)} Tìm kiếm</button></div><div class="filters"><select class="select" data-filter="category"><option>Tất cả danh mục</option>${state.categories.map((category) => `<option ${state.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select><select class="select" data-filter="time"><option>Mới nhất</option><option ${state.time === "Cũ nhất" ? "selected" : ""}>Cũ nhất</option><option ${state.time === "Tên A-Z" ? "selected" : ""}>Tên A-Z</option></select><select class="select" data-filter="status"><option>Tất cả trạng thái</option><option ${state.status === "Đã xử lý" ? "selected" : ""}>Đã xử lý</option><option ${state.status === "Đang xác minh" ? "selected" : ""}>Đang xác minh</option></select></div></div>`;
   }
 
+  function favoriteGroup(title, iconName, items, card, emptyTitle) {
+    return `<section class="panel favorite-group"><div class="favorite-group-heading"><div><h2>${icon(iconName, 17)} ${title}</h2><span>${items.length} mục</span></div></div><div class="case-list">${items.length ? items.map(card).join("") : `<div class="empty compact-empty"><div><div class="empty-icon">${icon(iconName, 22)}</div><h3>${emptyTitle}</h3></div></div>`}</div></section>`;
+  }
+
+  function favoritesPage() {
+    return `<div class="page favorites-page">${topHeading("Yêu thích", "Tập hợp các case và ghi chú bạn thường xuyên tra cứu", `<span class="favorite-total">${icon("star", 15)} ${favoriteCount()} mục yêu thích</span>`)}<div class="favorites-grid">${favoriteGroup("Case yêu thích", "grid", favoriteCases(), caseCard, "Chưa có case yêu thích")}${favoriteGroup("Ghi chú yêu thích", "book", favoriteNotes(), noteCard, "Chưa có ghi chú yêu thích")}</div></div>`;
+  }
+
   function casesPage() {
-    const items = state.view === "favorites" ? filteredCases().filter((item) => item.favorite) : filteredCases();
-    if (state.view === "favorites" && !state.search) state.category = "Tất cả";
+    const items = filteredCases();
     const selected = items.some((item) => item.id === state.selectedId) ? getCase() : items[0];
     if (selected && state.selectedId !== selected.id) state.selectedId = selected.id;
-    const heading = state.view === "favorites" ? "Case yêu thích" : "Tất cả case";
-    return `<div class="page">${topHeading(heading, "Tra cứu nhanh nguyên nhân và các bước xử lý sự cố IT", `<button class="button primary" data-action="add-case">${icon("plus", 15)} Thêm case</button>`)}<div class="workspace-grid"><section class="panel list-panel">${listToolbar()}<div class="result-count"><span>${items.length} case${state.search ? ` khớp “${esc(state.search)}”` : ""}</span><span>${icon("archive", 13)} Lưu tự động</span></div><div class="case-list">${items.length ? items.map(caseCard).join("") : `<div class="empty"><div><div class="empty-icon">${icon("search", 24)}</div><h3>Không tìm thấy case</h3><p>Thử từ khóa khác hoặc xóa bộ lọc.</p></div></div>`}</div></section>${detailPanel(selected)}</div></div>`;
+    return `<div class="page">${topHeading("Tất cả case", "Tra cứu nhanh nguyên nhân và các bước xử lý sự cố IT", `<button class="button primary" data-action="add-case">${icon("plus", 15)} Thêm case</button>`)}<div class="workspace-grid"><section class="panel list-panel">${listToolbar()}<div class="result-count"><span>${items.length} case${state.search ? ` khớp “${esc(state.search)}”` : ""}</span><span>${icon("archive", 13)} Lưu tự động</span></div><div class="case-list">${items.length ? items.map(caseCard).join("") : `<div class="empty"><div><div class="empty-icon">${icon("search", 24)}</div><h3>Không tìm thấy case</h3><p>Thử từ khóa khác hoặc xóa bộ lọc.</p></div></div>`}</div></section>${detailPanel(selected)}</div></div>`;
   }
 
   function caseDetailPage() {
@@ -269,7 +279,7 @@
 
   function noteCard(item) {
     return `<button class="case-card note-card ${state.noteSelectedId === item.id ? "selected" : ""}" data-select-note="${item.id}">
-      <div class="case-card-title">${icon("book", 17)}<span>${esc(item.title)}</span></div>
+      <div class="case-card-title">${icon("book", 17)}<span>${esc(item.title)}</span><span class="star favorite-toggle ${item.favorite ? "" : "off"}" role="button" tabindex="0" aria-label="${item.favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}" data-action="toggle-note-favorite" data-id="${item.id}">${icon("star", 15)}</span></div>
       <p class="case-card-summary"><strong>${esc(item.noteName)}</strong> · ${esc(item.content)}</p>
       <div class="case-card-meta">${tags([item.category])}<span>${formatDate(item.updatedAt)}</span></div>
     </button>`;
@@ -279,12 +289,17 @@
     if (!item) return `<div id="note-detail-panel" class="panel detail-panel empty" tabindex="-1"><div><div class="empty-icon">${icon("book", 26)}</div><h2>Chọn một ghi chú để xem</h2><p>Nội dung ghi chú sẽ hiển thị tại đây.</p></div></div>`;
     return `<article id="note-detail-panel" class="panel detail-panel note-detail-panel" tabindex="-1">
       <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon("book", 21)}</span><div><h2>${esc(item.title)}</h2>${tags([item.category, item.noteName])}</div></div>
-        <div class="detail-actions"><button class="button small" data-action="edit-note">${icon("edit", 14)} Chỉnh sửa</button></div></div>
+        <div class="detail-actions"><button class="button small ${item.favorite ? "favorite-active" : ""}" data-action="toggle-note-favorite" data-id="${item.id}">${icon("star", 14)} ${item.favorite ? "Bỏ yêu thích" : "Yêu thích"}</button><button class="button small" data-action="edit-note">${icon("edit", 14)} Chỉnh sửa</button><button class="button small" data-action="duplicate-note">${icon("copy", 14)} Nhân bản</button><button class="button small danger" data-action="delete-note">${icon("trash", 14)} Xóa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Danh mục</label><strong>${esc(item.category)}</strong></div><div class="info-item"><label>Tên ghi chú</label><strong>${esc(item.noteName)}</strong></div><div class="info-item"><label>Tạo ngày</label><strong>${formatDate(item.createdAt)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
       ${detailSection("note-section note-content-panel", "Nội dung ghi chú", `<p>${esc(item.content || "Chưa cập nhật")}</p>`, "book")}
       ${item.commands ? detailSection("note-section note-command-section", "Lệnh CMD / PowerShell", `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>`, "command") : ""}
       ${detailSection("note-section note-result-panel", "Kết quả và ghi chú", `<p>${esc(item.result || "Chưa cập nhật")}</p>${attachmentsMarkup(item.attachments || [], "note-attachments")}`, "info")}
     </article>`;
+  }
+
+  function imageLightbox() {
+    if (!state.lightbox) return "";
+    return `<div class="image-lightbox" role="dialog" aria-modal="true" aria-label="Xem ảnh phóng to"><div class="image-lightbox-content"><button class="image-lightbox-close" type="button" data-action="close-image" aria-label="Đóng ảnh">×</button><img src="${esc(state.lightbox.src)}" alt="${esc(state.lightbox.alt)}" /></div></div>`;
   }
 
   function notesPage() {
@@ -325,17 +340,20 @@
   }
 
   function settingsPage() {
-    const deleted = state.cases.filter((item) => item.deleted);
+    const deletedCases = state.cases.filter((item) => item.deleted);
+    const deletedNotes = state.notes.filter((item) => item.deleted);
+    const deleted = [...deletedCases.map((item) => `<div class="trash-row"><div><strong>${esc(item.title)}</strong><small>Case · Xóa lần cuối: ${formatDate(item.updatedAt)}</small></div><button class="button small" data-restore-case="${item.id}">${icon("refresh", 13)} Khôi phục</button></div>`), ...deletedNotes.map((item) => `<div class="trash-row"><div><strong>${esc(item.title)}</strong><small>Ghi chú · Xóa lần cuối: ${formatDate(item.updatedAt)}</small></div><button class="button small" data-restore-note="${item.id}">${icon("refresh", 13)} Khôi phục</button></div>`)].join("");
+    const deletedCount = deletedCases.length + deletedNotes.length;
     return `<div class="page">${topHeading("Cài đặt & Sao lưu", "Bảo vệ dữ liệu cục bộ và điều chỉnh cách hiển thị sổ tay")}
       <div class="settings-grid"><section class="settings-card"><h3>${icon("archive", 18)} Sao lưu dữ liệu</h3><p>Xuất toàn bộ case, danh mục, tag và ảnh đính kèm thành một file JSON để lưu trữ hoặc chuyển sang máy khác.</p><button class="button primary" data-action="export">${icon("download", 15)} Xuất bản sao</button><div class="setting-row"><span>Khôi phục dữ liệu</span><button class="button small" data-action="import">${icon("upload", 13)} Chọn file khôi phục</button></div><input id="settings-import" class="sr-only" type="file" accept="application/json,.json" /></section>
       <section class="settings-card"><h3>${icon("palette", 18)} Giao diện</h3><p>Tùy chỉnh giao diện và số lượng case hiển thị trong danh sách.</p><div class="setting-row"><span>Chế độ màu</span><select class="select" style="width:130px" data-setting="theme"><option value="light" ${state.theme === "light" ? "selected" : ""}>Sáng (Light)</option><option value="dark" ${state.theme === "dark" ? "selected" : ""}>Tối (Dark)</option></select></div><div class="setting-row"><span>Số case hiển thị</span><select class="select" style="width:130px" data-setting="pageSize"><option ${state.pageSize === "20" ? "selected" : ""}>20 case / trang</option><option ${state.pageSize === "50" ? "selected" : ""}>50 case / trang</option></select></div></section>
-      <section class="settings-card" style="grid-column:1/-1"><h3>${icon("trash", 18)} Thùng rác ${deleted.length ? `<span class="tag red">${deleted.length}</span>` : ""}</h3><p>Case đã xóa mềm được giữ lại để khôi phục khi cần.</p>${deleted.length ? `<div class="trash-list">${deleted.map((item) => `<div class="trash-row"><div><strong>${esc(item.title)}</strong><small>Xóa lần cuối: ${formatDate(item.updatedAt)}</small></div><button class="button small" data-restore-case="${item.id}">${icon("refresh", 13)} Khôi phục</button></div>`).join("")}</div>` : `<span class="subtle">Thùng rác đang trống.</span>`}</section></div></div>`;
+      <section class="settings-card" style="grid-column:1/-1"><h3>${icon("trash", 18)} Thùng rác ${deletedCount ? `<span class="tag red">${deletedCount}</span>` : ""}</h3><p>Case và ghi chú đã xóa mềm được giữ lại để khôi phục khi cần.</p>${deletedCount ? `<div class="trash-list">${deleted}</div>` : `<span class="subtle">Thùng rác đang trống.</span>`}</section></div></div>`;
   }
 
   function render() {
     document.documentElement.dataset.theme = state.theme;
-    const page = state.view === "form" ? formPage() : state.view === "detail" ? caseDetailPage() : state.view === "note-form" ? noteFormPage() : state.view === "note-detail" ? noteDetailPage() : state.view === "notes" ? notesPage() : state.view === "search" ? searchPage() : state.view === "categories" ? categoriesPage() : state.view === "settings" ? settingsPage() : casesPage();
-    document.querySelector("#app").innerHTML = `${renderSidebar()}<main class="main">${page}</main>`;
+    const page = state.view === "form" ? formPage() : state.view === "detail" ? caseDetailPage() : state.view === "note-form" ? noteFormPage() : state.view === "note-detail" ? noteDetailPage() : state.view === "notes" ? notesPage() : state.view === "favorites" ? favoritesPage() : state.view === "search" ? searchPage() : state.view === "categories" ? categoriesPage() : state.view === "settings" ? settingsPage() : casesPage();
+    document.querySelector("#app").innerHTML = `${renderSidebar()}<main class="main">${page}</main>${imageLightbox()}`;
   }
 
   function focusSearch(id = "case-search") { const input = document.getElementById(id); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } }
@@ -373,7 +391,7 @@
       state.notes[index] = { ...state.notes[index], ...data, attachments: data.attachments.length ? data.attachments : state.notes[index].attachments || [], updatedAt: now };
       state.noteSelectedId = state.noteEditingId; toast("Đã lưu thay đổi cho ghi chú.");
     } else {
-      const item = { ...data, id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: now, updatedAt: now, deleted: false, attachments: data.attachments || [] };
+      const item = { ...data, id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, favorite: false, createdAt: now, updatedAt: now, deleted: false, attachments: data.attachments || [] };
       state.notes.unshift(item); state.noteSelectedId = item.id; toast("Đã thêm ghi chú mới.");
     }
     state.noteEditingId = null; state.view = "notes"; save(); render();
@@ -431,7 +449,37 @@
     state.noteSelectedId = id; state.view = "note-detail"; render(); focusPanel("note-detail-panel");
   };
 
+  function toggleFavorite(type, id) {
+    const collection = type === "note" ? state.notes : state.cases;
+    const item = collection.find((entry) => entry.id === id);
+    if (!item || item.deleted) return;
+    item.favorite = !item.favorite;
+    save(); render();
+    syncItem(type === "note" ? "upsertNote" : "upsertCase", item);
+    toast(item.favorite ? "Đã thêm vào yêu thích." : "Đã bỏ khỏi yêu thích.");
+  }
+
+  function duplicateNote() {
+    const original = getNote();
+    if (!original) return;
+    const now = new Date().toISOString();
+    const copy = { ...original, id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: `${original.title} (Bản sao)`, favorite: false, deleted: false, createdAt: now, updatedAt: now, attachments: [...(original.attachments || [])] };
+    state.notes.unshift(copy); state.noteSelectedId = copy.id; state.view = "note-detail"; save(); render(); syncItem("upsertNote", copy); toast("Đã nhân bản ghi chú.");
+  }
+
+  function deleteNote() {
+    const item = getNote();
+    if (!item) return;
+    item.deleted = true; item.favorite = false; item.updatedAt = new Date().toISOString();
+    state.noteSelectedId = activeNotes()[0]?.id || null; state.view = "notes"; save(); render(); syncItem("upsertNote", item); toast("Đã chuyển ghi chú vào thùng rác.");
+  }
+
   document.addEventListener("click", (event) => {
+    const actionTarget = event.target.closest("[data-action]");
+    const action = actionTarget?.dataset.action;
+    if (event.target.classList.contains("image-lightbox") || action === "close-image") { state.lightbox = null; render(); return; }
+    if (action === "open-image") { state.lightbox = { src: actionTarget.dataset.imageSrc, alt: actionTarget.dataset.imageAlt || "Ảnh đính kèm" }; render(); return; }
+    if (action === "toggle-case-favorite" || action === "toggle-note-favorite") { event.preventDefault(); event.stopPropagation(); toggleFavorite(action === "toggle-note-favorite" ? "note" : "case", actionTarget.dataset.id); return; }
     const view = event.target.closest("[data-view]"); if (view) { state.view = view.dataset.view; state.search = state.view === "search" ? state.search : state.search; render(); return; }
     const select = event.target.closest("[data-select-case]"); if (select) {
       const id = select.dataset.selectCase;
@@ -447,7 +495,6 @@
       noteSelectionTimer = setTimeout(() => { state.noteSelectedId = id; render(); }, 450);
       return;
     }
-    const action = event.target.closest("[data-action]")?.dataset.action;
     if (action === "add-case") { state.view = "form"; state.editingId = null; state.pendingAttachments = []; render(); return; }
     if (action === "add-case-attachment-url") { addAttachmentUrl("attachment-url"); return; }
     if (action === "add-note-attachment-url") { addAttachmentUrl("note-attachment-url"); return; }
@@ -456,6 +503,8 @@
     if (action === "add-note") { state.view = "note-form"; state.noteEditingId = null; state.pendingAttachments = []; render(); return; }
     if (action === "back-to-notes") { state.view = "notes"; state.noteEditingId = null; render(); return; }
     if (action === "edit-note") { state.view = "note-form"; state.noteEditingId = state.noteSelectedId; state.pendingAttachments = []; render(); return; }
+    if (action === "duplicate-note") { duplicateNote(); return; }
+    if (action === "delete-note") { deleteNote(); return; }
     if (action === "search-notes") { state.noteSearch = document.getElementById("note-search")?.value || state.noteSearch; state.view = "notes"; render(); return; }
     if (action === "edit-case") { state.view = "form"; state.editingId = state.selectedId; state.pendingAttachments = []; render(); return; }
     if (action === "duplicate-case") { const original = getCase(); if (!original) return; const now = new Date().toISOString(); const copy = { ...original, id: uid(), title: `${original.title} (Bản sao)`, favorite: false, deleted: false, createdAt: now, updatedAt: now }; state.cases.unshift(copy); state.selectedId = copy.id; save(); render(); syncItem("upsertCase", copy); toast("Đã nhân bản case."); return; }
@@ -466,6 +515,7 @@
     if (action === "add-category") { const value = window.prompt("Tên danh mục mới:"); if (value?.trim() && !state.categories.includes(value.trim())) { state.categories.push(value.trim()); save(); render(); syncItem("upsertCategory", { name: value.trim() }); toast("Đã thêm danh mục."); } return; }
     if (event.target.closest("[data-copy-code]")) { navigator.clipboard?.writeText(event.target.closest("[data-copy-code]").dataset.copyCode); toast("Đã sao chép lệnh."); return; }
     const restore = event.target.closest("[data-restore-case]"); if (restore) { const item = getCase(restore.dataset.restoreCase); if (item) { item.deleted = false; item.updatedAt = new Date().toISOString(); save(); render(); syncItem("upsertCase", item); toast("Đã khôi phục case."); } return; }
+    const restoreNote = event.target.closest("[data-restore-note]"); if (restoreNote) { const item = getNote(restoreNote.dataset.restoreNote); if (item) { item.deleted = false; item.updatedAt = new Date().toISOString(); save(); render(); syncItem("upsertNote", item); toast("Đã khôi phục ghi chú."); } return; }
     const editCategory = event.target.closest("[data-edit-category]"); if (editCategory) { const oldName = editCategory.dataset.editCategory; const next = window.prompt("Đổi tên danh mục:", oldName); if (next?.trim() && next.trim() !== oldName && !state.categories.includes(next.trim())) { const index = state.categories.indexOf(oldName); state.categories[index] = next.trim(); state.cases.forEach((item) => { if (item.category === oldName) item.category = next.trim(); }); save(); render(); syncItem("upsertCategory", { name: next.trim() }); state.cases.filter((item) => item.category === next.trim()).forEach((item) => syncItem("upsertCase", item)); toast("Đã cập nhật danh mục."); } return; }
     const removeTag = event.target.closest("[data-remove-tag]"); if (removeTag) { removeTag.closest(".tag")?.remove(); return; }
   });
@@ -479,7 +529,14 @@
     if (event.target.id === "case-search" || event.target.id === "global-search") { state.search = event.target.value; const id = event.target.id; render(); focusSearch(id); }
     if (event.target.id === "note-search") { state.noteSearch = event.target.value; render(); focusSearch("note-search"); }
   });
-  document.addEventListener("keydown", (event) => { if (event.target.id === "tag-input") parseTagsInput(event); if (event.key === "Enter" && (event.target.id === "case-search" || event.target.id === "global-search")) { event.preventDefault(); state.search = event.target.value; render(); } if (event.key === "Enter" && event.target.id === "note-search") { event.preventDefault(); state.noteSearch = event.target.value; render(); } });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.lightbox) { state.lightbox = null; render(); return; }
+    const actionTarget = event.target.closest("[data-action]");
+    if ((event.key === "Enter" || event.key === " ") && actionTarget && ["toggle-case-favorite", "toggle-note-favorite", "open-image", "close-image"].includes(actionTarget.dataset.action)) { event.preventDefault(); actionTarget.click(); return; }
+    if (event.target.id === "tag-input") parseTagsInput(event);
+    if (event.key === "Enter" && (event.target.id === "case-search" || event.target.id === "global-search")) { event.preventDefault(); state.search = event.target.value; render(); }
+    if (event.key === "Enter" && event.target.id === "note-search") { event.preventDefault(); state.noteSearch = event.target.value; render(); }
+  });
   document.addEventListener("change", (event) => {
     if (event.target.dataset.filter === "category") { state.category = event.target.value === "Tất cả danh mục" ? "Tất cả" : event.target.value; render(); }
     if (event.target.dataset.filter === "status") { state.status = event.target.value === "Tất cả trạng thái" ? "Tất cả" : event.target.value; render(); }
