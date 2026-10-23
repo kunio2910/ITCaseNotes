@@ -37,10 +37,10 @@
 
   const seedNotes = [
     {
-      id: "note-001", title: "Kiểm tra và khởi động lại Print Spooler", category: "Windows", noteName: "Print Spooler", content: "Ghi nhớ nhanh các bước kiểm tra khi máy in không nhận lệnh in hoặc bị treo hàng đợi.", commands: "Get-Service Spooler\nRestart-Service Spooler", result: "Dịch vụ chạy lại bình thường, có thể tiếp tục kiểm tra driver nếu lỗi còn tiếp diễn.", createdAt: "2026-10-21T08:30:00+07:00", updatedAt: "2026-10-22T09:15:00+07:00", deleted: false
+      id: "note-001", title: "Kiểm tra và khởi động lại Print Spooler", category: "Windows", noteName: "Print Spooler", content: "Ghi nhớ nhanh các bước kiểm tra khi máy in không nhận lệnh in hoặc bị treo hàng đợi.", commands: "Get-Service Spooler\nRestart-Service Spooler", result: "Dịch vụ chạy lại bình thường, có thể tiếp tục kiểm tra driver nếu lỗi còn tiếp diễn.", attachments: [], createdAt: "2026-10-21T08:30:00+07:00", updatedAt: "2026-10-22T09:15:00+07:00", deleted: false
     },
     {
-      id: "note-002", title: "Làm sạch DNS trên máy người dùng", category: "Mạng / Internet", noteName: "DNS nhanh", content: "Dùng khi người dùng không truy cập được website hoặc dịch vụ nội bộ sau khi thay đổi mạng.", commands: "ipconfig /flushdns\nipconfig /renew", result: "Kiểm tra lại bằng trình duyệt ẩn danh sau khi chạy lệnh.", createdAt: "2026-10-19T14:10:00+07:00", updatedAt: "2026-10-19T14:10:00+07:00", deleted: false
+      id: "note-002", title: "Làm sạch DNS trên máy người dùng", category: "Mạng / Internet", noteName: "DNS nhanh", content: "Dùng khi người dùng không truy cập được website hoặc dịch vụ nội bộ sau khi thay đổi mạng.", commands: "ipconfig /flushdns\nipconfig /renew", result: "Kiểm tra lại bằng trình duyệt ẩn danh sau khi chạy lệnh.", attachments: [], createdAt: "2026-10-19T14:10:00+07:00", updatedAt: "2026-10-19T14:10:00+07:00", deleted: false
     }
   ];
 
