@@ -97,7 +97,7 @@
   async function cloudRequest(payload) {
     if (!APPS_SCRIPT_URL) return null;
     // Keep extended fields in a versioned envelope supported by the existing Sheet schema.
-    if (payload.item) { const item = payload.item; payload = { ...payload, item: { ...item, attachments: [...(item.attachments || []).filter(file => file.type !== "itcn-metadata"), {type:"itcn-metadata", version:1, kind:item.kind || "note", verifiedAt:item.verifiedAt || null, linkedIds:item.linkedIds || [], referenceUrl:item.referenceUrl || "", configuration:item.configuration || null}] } }; }
+    if (payload.item) { const item = payload.item; payload = { ...payload, item: { ...item, attachments: [...(item.attachments || []).filter(file => file.type !== "itcn-metadata"), {type:"itcn-metadata", version:1, kind:item.kind || (item.status || item.resolution ? "case" : "note"), verifiedAt:item.verifiedAt || null, linkedIds:item.linkedIds || [], referenceUrl:item.referenceUrl || "", configuration:item.configuration || null}] } }; }
     const response = await fetch(APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
     if (!response.ok) throw new Error(`Apps Script trả về HTTP ${response.status}`);
     const result = await response.json();
@@ -379,7 +379,8 @@
   }
   function decodeExtendedItem(item) {
     const metadata = (item.attachments || []).find(file => file.type === "itcn-metadata");
-    return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:metadata.verifiedAt, linkedIds:metadata.linkedIds, referenceUrl:metadata.referenceUrl || "", configuration:metadata.configuration} : {}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
+    const isCase = Boolean(item.status || item.symptoms || item.resolution);
+    return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:isCase ? metadata.verifiedAt : null, linkedIds:metadata.linkedIds, referenceUrl:metadata.referenceUrl || "", configuration:metadata.configuration} : {}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
   }
   const caseTemplates = {
     "Máy in": {symptoms:"Model máy in:\nKết nối USB / LAN:\nThông báo lỗi:", resolution:"Kiểm tra nguồn và kết nối máy in.\nKiểm tra hàng đợi và Print Spooler.\nKiểm tra driver đúng model.\nIn trang thử và xác nhận với người dùng."},
@@ -413,7 +414,7 @@
   });
   function categoryIcon(name) { return state.categoryIcons[name] || (name === "Windows" ? "windows" : name === "Máy in" ? "printer" : "folder"); }
   function setupPage() {
-    return `<div class="page">${topHeading("Thiết lập", "Quản lý danh mục và các mẫu ghi nhận sự cố")}<section class="setup-section"><div class="setup-heading"><h2>Danh mục</h2><button class="button primary" data-action="new-category">Thêm danh mục</button></div><div class="categories-grid">${state.categories.map((name,index) => `<article class="category-card"><span class="category-color" style="background:${categoryColors[index % categoryColors.length]}">${icon(categoryIcon(name))}</span><div class="category-info"><strong>${esc(name)}</strong><small>${activeCases().filter(item => item.category === name).length} case</small></div><button class="button small" data-edit-category-new="${esc(name)}">Chỉnh sửa</button></article>`).join("")}</div></section><section class="setup-section"><div class="setup-heading"><h2>Mẫu case</h2><button class="button primary" data-action="new-template">Thêm mẫu case</button></div><div class="template-grid">${availableTemplates().map(template => `<article class="settings-card"><h3>${esc(template.name)}</h3><span class="tag">${esc(template.category)}</span><p class="template-preview">${esc(template.fields.symptoms || template.fields.resolution || "Chưa có nội dung")}</p><button class="button" data-edit-template="${esc(template.id)}">Chỉnh sửa</button> <button class="button danger" data-delete-template="${esc(template.id)}">Xóa</button></article>`).join("") || '<p>Chưa có mẫu case. Bấm Thêm mẫu case để tạo.</p>'}</div></section></div>`;
+    return `<div class="page">${topHeading("Thiết lập", "Quản lý danh mục và các mẫu ghi nhận sự cố")}<section class="setup-section"><div class="setup-heading"><h2>Danh mục</h2><button class="button primary" data-action="new-category">Thêm danh mục</button></div><div class="categories-grid">${state.categories.map((name,index) => `<article class="category-card"><span class="category-color" style="background:${categoryColors[index % categoryColors.length]}">${icon(categoryIcon(name))}</span><div class="category-info"><strong>${esc(name)}</strong><small>${activeCases().filter(item => item.category === name).length} case</small></div><button class="button small" data-edit-category-new="${esc(name)}">Chỉnh sửa</button><button class="button small danger" data-delete-category="${esc(name)}" aria-label="Xóa danh mục ${esc(name)}">Xóa</button></article>`).join("")}</div></section><section class="setup-section"><div class="setup-heading"><h2>Mẫu case</h2><button class="button primary" data-action="new-template">Thêm mẫu case</button></div><div class="template-grid">${availableTemplates().map(template => `<article class="settings-card"><h3>${esc(template.name)}</h3><span class="tag">${esc(template.category)}</span><p class="template-preview">${esc(template.fields.symptoms || template.fields.resolution || "Chưa có nội dung")}</p><button class="button" data-edit-template="${esc(template.id)}">Chỉnh sửa</button> <button class="button danger" data-delete-template="${esc(template.id)}">Xóa</button></article>`).join("") || '<p>Chưa có mẫu case. Bấm Thêm mẫu case để tạo.</p>'}</div></section></div>`;
   }
   function settingsEditor() {
     const editor = state.editor;
@@ -430,10 +431,11 @@
       document.querySelector('[data-filter="time"]')?.remove();
       document.querySelector('.filters')?.insertAdjacentHTML('beforeend', `<select class="select" aria-label="Sắp xếp danh sách" data-sort-key="${key}">${Object.entries(sortLabels).map(([value,label]) => `<option value="${value}" ${(state.sortOrders[key] || "created-desc") === value ? "selected" : ""}>${label}</option>`).join("")}</select>`);
     }
-    if (state.view === "note-form" && state.knowledgeMode) document.querySelector('#note-content')?.closest('.field').insertAdjacentHTML('afterend', `<div class="field full"><label for="knowledge-url">URL trang web tham khảo</label><input id="knowledge-url" type="url" value="${esc(getNote(state.noteEditingId)?.referenceUrl || "")}" placeholder="https://..." /><small>Trang web chỉ tải khi bấm Xem trang nhúng.</small></div>`);
-    if (state.knowledgeMode && ["notes","note-detail"].includes(state.view)) {
-      const url = safeReference(getNote()?.referenceUrl);
-      if(url) document.querySelector('.note-content-panel')?.insertAdjacentHTML('afterend', `<section class="reference-panel"><h3>Trang web tham khảo</h3><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)} · Mở tab mới</a><button class="button" data-action="embed-reference" data-url="${esc(url)}">Xem trang nhúng</button><p>Một số website chặn nhúng. Nếu khung trống hoặc báo lỗi, hãy dùng Mở tab mới.</p><div id="reference-frame"></div></section>`);
+    if (state.view === "form" && !document.getElementById("reference-url")) {
+      document.querySelector('#case-form #result')?.closest('.form-section')?.insertAdjacentHTML('afterend', `<div class="field full reference-url-field"><label for="reference-url">URL trang web tham khảo <span class="optional">(tùy chọn)</span></label><input id="reference-url" type="url" value="${esc(getCase(state.editingId)?.referenceUrl || "")}" placeholder="https://..." /><small>Chỉ hiển thị ở chi tiết khi đã nhập URL.</small></div>`);
+    }
+    if (state.view === "note-form" && !document.getElementById("reference-url")) {
+      document.querySelector('#note-content')?.closest('.field')?.insertAdjacentHTML('afterend', `<div class="field full reference-url-field"><label for="reference-url">URL trang web tham khảo <span class="optional">(tùy chọn)</span></label><input id="reference-url" type="url" value="${esc(getNote(state.noteEditingId)?.referenceUrl || "")}" placeholder="https://..." /><small>Chỉ hiển thị ở chi tiết khi đã nhập URL.</small></div>`);
     }
     document.querySelectorAll('[data-select-case]').forEach(card => {const item = getCase(card.dataset.selectCase); const svg = card.querySelector('.case-card-title > svg'); if(item && svg) svg.outerHTML = icon(categoryIcon(item.category),17);});
   }
@@ -469,11 +471,17 @@
     const detail = document.querySelector('#case-detail-panel:not(.empty), #note-detail-panel:not(.empty)');
     document.querySelectorAll('[data-select-case],[data-select-note]').forEach(card => {
       const item = card.dataset.selectCase ? getCase(card.dataset.selectCase) : getNote(card.dataset.selectNote);
-      if (item?.verifiedAt) card.querySelector('.favorite-toggle')?.insertAdjacentHTML('beforebegin', '<span class="tag green verified-badge">✓ Đã kiểm chứng</span>');
+      if (item?.verifiedAt && card.dataset.selectCase) card.querySelector('.favorite-toggle')?.insertAdjacentHTML('beforebegin', '<span class="tag green verified-badge">✓ Đã kiểm chứng</span>');
     });
     if (detail) {
       const item = detail.id === "case-detail-panel" ? getCase() : getNote();
-      detail.insertAdjacentHTML('beforeend', `${relatedMarkup(item)}<div class="verification"><span>${item.verifiedAt ? `✓ Đã kiểm chứng · ${formatDateTime(item.verifiedAt)}` : 'Chưa kiểm chứng'}</span><button class="button small" data-action="verify-item">${item.verifiedAt ? 'Bỏ kiểm chứng' : 'Đánh dấu đã kiểm chứng'}</button></div>`);
+      const url = safeReference(item?.referenceUrl);
+      if (url && !detail.querySelector('.reference-panel')) {
+        const anchor = detail.querySelector('.note-content-panel') || detail.querySelector('.detail-section.result');
+        anchor?.insertAdjacentHTML('afterend', `<section class="reference-panel"><h3>Trang web tham khảo</h3><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)} · Mở tab mới</a><button class="button" data-action="embed-reference" data-url="${esc(url)}">Xem trang nhúng</button><p>Một số website chặn nhúng. Nếu khung trống hoặc báo lỗi, hãy dùng Mở tab mới.</p><div id="reference-frame"></div></section>`);
+      }
+      detail.insertAdjacentHTML('beforeend', relatedMarkup(item));
+      if (detail.id === "case-detail-panel") detail.insertAdjacentHTML('beforeend', `<div class="verification"><span>${item.verifiedAt ? `✓ Đã kiểm chứng · ${formatDateTime(item.verifiedAt)}` : 'Chưa kiểm chứng'}</span><button class="button small" data-action="verify-item">${item.verifiedAt ? 'Bỏ kiểm chứng' : 'Đánh dấu đã kiểm chứng'}</button></div>`);
     }
     if (["cases","notes"].includes(state.view)) {
       const recent = recentItems().map(ref => ({...ref,item:[...state.cases,...state.notes].find(item => item.id === ref.id && !item.deleted)})).filter(ref => ref.item);
@@ -484,12 +492,12 @@
   function focusSearch(id = "case-search") { const input = document.getElementById(id); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } }
   function formData() {
     const field = (id) => document.getElementById(id)?.value?.trim() || "";
-    return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachments };
+    return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), referenceUrl: field("reference-url"), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachments };
   }
   function saveForm(event) {
     event.preventDefault();
     const data = formData();
-    data.verifiedAt = null;
+    if (data.referenceUrl && !safeReference(data.referenceUrl)) { toast("URL phải bắt đầu bằng http:// hoặc https://.", "error"); return; }
     if (!data.title || !data.symptoms || !data.resolution) { toast("Vui lòng điền các trường bắt buộc.", "error"); return; }
     const now = new Date().toISOString();
     if (state.editingId) {
@@ -505,15 +513,13 @@
   }
   function noteFormData() {
     const field = (id) => document.getElementById(id)?.value?.trim() || "";
-    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), attachments: state.pendingAttachments };
+    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), attachments: state.pendingAttachments };
   }
   function saveNoteForm(event) {
     event.preventDefault();
     const data = noteFormData();
-    data.referenceUrl = state.knowledgeMode ? (document.getElementById('knowledge-url')?.value.trim() || "") : "";
     if (data.referenceUrl && !safeReference(data.referenceUrl)) { toast("URL phải bắt đầu bằng http:// hoặc https://.", "error"); return; }
     data.kind = state.knowledgeMode ? "knowledge" : "note";
-    data.verifiedAt = null;
     if (!data.title || !data.noteName || !data.content) { toast("Vui lòng điền tiêu đề, tên ghi chú và nội dung.", "error"); return; }
     const now = new Date().toISOString();
     if (state.noteEditingId) {
@@ -618,6 +624,18 @@
     if (action === "close-config") {state.editor = null; render(); return;}
     const editCategoryNew = event.target.closest('[data-edit-category-new]');
     if(editCategoryNew) {state.editor={type:"category",name:editCategoryNew.dataset.editCategoryNew}; render(); return;}
+    const deleteCategory = event.target.closest('[data-delete-category]');
+    if(deleteCategory) {
+      const name = deleteCategory.dataset.deleteCategory;
+      if (name === "Khác") { toast("Không thể xóa danh mục mặc định Khác.", "error"); return; }
+      const used = [...state.cases, ...state.notes].filter(item => !item.deleted && item.category === name);
+      if (!confirm(`${used.length ? `Có ${used.length} nội dung đang dùng danh mục này. Chuyển sang Khác rồi ` : ""}xóa danh mục “${name}”?`)) return;
+      if (used.length && !state.categories.includes("Khác")) state.categories.push("Khác");
+      for (const item of used) { item.category = "Khác"; item.updatedAt = new Date().toISOString(); syncItem(state.cases.includes(item) ? "upsertCase" : "upsertNote", item); }
+      state.customTemplates = availableTemplates().map(template => ({...template, category: template.category === name ? "Khác" : template.category}));
+      state.categories = state.categories.filter(category => category !== name); delete state.categoryIcons[name];
+      saveConfiguration(); render(); toast("Đã xóa danh mục."); return;
+    }
     const editTemplate = event.target.closest('[data-edit-template]');
     if(editTemplate) {state.editor={type:"template",id:editTemplate.dataset.editTemplate}; render(); return;}
     const deleteTemplate = event.target.closest('[data-delete-template]');

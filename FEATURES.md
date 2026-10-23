@@ -6,6 +6,8 @@
 - Danh sách Case, Ghi chú, Kiến thức có sáu kiểu sắp xếp theo ngày tạo, tên hoặc danh mục, theo hai chiều. Lựa chọn được nhớ riêng cho từng danh sách trên trình duyệt.
 - Nhãn Đã kiểm chứng ở cạnh trái ngôi sao yêu thích.
 - Kiến thức có URL tham khảo HTTP/HTTPS. Khung iframe chỉ tải khi bấm Xem trang nhúng; luôn có liên kết mở tab mới vì website có thể chặn nhúng. Khung có sandbox và không gửi referrer.
+- Case và Ghi chú cũng có ô URL tham khảo tùy chọn. Chi tiết chỉ hiển thị khu vực trang web khi URL hợp lệ đã được nhập; Ghi chú và Kiến thức không có chức năng đánh dấu kiểm chứng.
+- Thiết lập cho phép xóa danh mục. Nếu danh mục đang được dùng, nội dung được hỏi xác nhận và chuyển về “Khác”; danh mục mặc định “Khác” được giữ lại.
 - Thiết lập được đồng bộ bằng bản ghi dành riêng `itcn-settings-v1` trong Notes, ẩn khỏi danh sách và thùng rác. Metadata chứa danh mục, icon và mẫu. Không xóa/sửa bản ghi này trực tiếp trong Sheet. Backup phiên bản 3 chứa cả icon và mẫu, vẫn đọc được backup cũ.
 
 - Mẫu case: trong Thêm/Chỉnh sửa case, chọn mẫu Windows, Máy in, Mạng / Internet hoặc Microsoft 365 rồi bấm Áp dụng mẫu. Nội dung đang nhập chỉ được thay sau khi xác nhận.
