@@ -89,14 +89,15 @@
     categories: stored?.categories?.length ? stored.categories : defaultCategories,
     view: "cases", selectedId: stored?.cases?.find((item) => !item.deleted)?.id || seedCases[0].id, editingId: null, search: "", category: "Tất cả", status: "Tất cả", time: "Mới nhất",
     noteSelectedId: stored?.notes?.find((item) => !item.deleted)?.id || seedNotes[0].id, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả",
-    theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], lightbox: null
+    theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], lightbox: null,
+    categoryIcons: stored?.categoryIcons || {}, customTemplates: stored?.customTemplates ?? null, sortOrders: stored?.sortOrders || {}, editor: null
   };
 
-  const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases: state.cases, notes: state.notes, categories: state.categories, theme: state.theme, pageSize: state.pageSize }));
+  const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases: state.cases, notes: state.notes, categories: state.categories, theme: state.theme, pageSize: state.pageSize, categoryIcons:state.categoryIcons, customTemplates:state.customTemplates, sortOrders:state.sortOrders }));
   async function cloudRequest(payload) {
     if (!APPS_SCRIPT_URL) return null;
     // Keep extended fields in a versioned envelope supported by the existing Sheet schema.
-    if (payload.item) { const item = payload.item; payload = { ...payload, item: { ...item, attachments: [...(item.attachments || []).filter(file => file.type !== "itcn-metadata"), {type:"itcn-metadata", version:1, kind:item.kind || "note", verifiedAt:item.verifiedAt || null, linkedIds:item.linkedIds || []}] } }; }
+    if (payload.item) { const item = payload.item; payload = { ...payload, item: { ...item, attachments: [...(item.attachments || []).filter(file => file.type !== "itcn-metadata"), {type:"itcn-metadata", version:1, kind:item.kind || "note", verifiedAt:item.verifiedAt || null, linkedIds:item.linkedIds || [], referenceUrl:item.referenceUrl || "", configuration:item.configuration || null}] } }; }
     const response = await fetch(APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
     if (!response.ok) throw new Error(`Apps Script trả về HTTP ${response.status}`);
     const result = await response.json();
@@ -124,6 +125,7 @@
       for (const name of state.categories) await cloudRequest({ action: "upsertCategory", name });
       for (const item of state.cases) await cloudRequest({ action: "upsertCase", item });
       for (const item of state.notes) await cloudRequest({ action: "upsertNote", item });
+      if (state.customTemplates !== null || Object.keys(state.categoryIcons).length) saveConfiguration();
       cloudState.status = "Đã đồng bộ";
     } finally {
       cloudState.syncing = false;
@@ -138,7 +140,10 @@
       if (hasRemoteData) {
         state.cases = Array.isArray(remote.cases) ? remote.cases.map(decodeExtendedItem) : [];
         state.notes = Array.isArray(remote.notes) ? remote.notes.map(decodeExtendedItem) : [];
-        state.categories = remote.categories?.length ? remote.categories : defaultCategories;
+        const configuration = state.notes.find(item => item.id === "itcn-settings-v1")?.configuration;
+        if (configuration) { state.categoryIcons = configuration.categoryIcons || {}; state.customTemplates = configuration.templates ?? null; }
+        state.notes = state.notes.filter(item => item.id !== "itcn-settings-v1");
+        state.categories = configuration?.categories?.length ? configuration.categories : remote.categories?.length ? remote.categories : defaultCategories;
         state.selectedId = state.cases.find((item) => !item.deleted)?.id || null;
         state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null;
         save(); render();
@@ -172,7 +177,7 @@
     if (state.time === "Cũ nhất") items.sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt));
     else if (state.time === "Tên A-Z") items.sort((a, b) => a.title.localeCompare(b.title, "vi"));
     else items.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-    return items;
+    return sortItems(items, "cases");
   };
   const filteredNotes = () => {
     let items = activeNotes().filter((item) => {
@@ -180,7 +185,7 @@
       return !state.noteSearch.trim() || haystack.includes(state.noteSearch.trim().toLowerCase());
     });
     if (state.noteCategory !== "Tất cả") items = items.filter((item) => item.category === state.noteCategory);
-    return items.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    return sortItems(items, state.knowledgeMode ? "knowledge" : "notes");
   };
   const toast = (message, type = "success") => {
     const node = document.createElement("div"); node.className = `toast ${type === "error" ? "error" : ""}`; node.innerHTML = `${icon(type === "error" ? "alert" : "check", 16)}<span>${esc(message)}</span>`;
@@ -200,7 +205,7 @@
         ${navButton("notes", "Ghi chú", "book", state.notes.filter(item => !item.deleted && item.kind !== "knowledge").length)}
         ${navButton("knowledge", "Kiến thức", "book", state.notes.filter(item => !item.deleted && item.kind === "knowledge").length)}
         ${navButton("favorites", "Yêu thích", "star", favoriteCount())}
-        ${navButton("categories", "Danh mục", "folder", state.categories.length)}
+        ${navButton("categories", "Thiết lập", "folder", state.categories.length)}
         ${navButton("settings", "Cài đặt & Sao lưu", "settings", deletedCount ? `${deletedCount} đã xóa` : "")}
       </nav>
       <div class="sidebar-footer">Lưu cục bộ + Google Sheet<br />${cloudState.status} · ${activeCases().length} case đang hoạt động</div>
@@ -374,7 +379,7 @@
   }
   function decodeExtendedItem(item) {
     const metadata = (item.attachments || []).find(file => file.type === "itcn-metadata");
-    return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:metadata.verifiedAt, linkedIds:metadata.linkedIds} : {}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
+    return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:metadata.verifiedAt, linkedIds:metadata.linkedIds, referenceUrl:metadata.referenceUrl || "", configuration:metadata.configuration} : {}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
   }
   const caseTemplates = {
     "Máy in": {symptoms:"Model máy in:\nKết nối USB / LAN:\nThông báo lỗi:", resolution:"Kiểm tra nguồn và kết nối máy in.\nKiểm tra hàng đợi và Print Spooler.\nKiểm tra driver đúng model.\nIn trang thử và xác nhận với người dùng."},
@@ -383,6 +388,55 @@
     "Windows": {symptoms:"Phiên bản Windows:\nThiết bị:\nMã lỗi:\nThay đổi gần nhất:", resolution:"Ghi nhận lỗi và phạm vi ảnh hưởng.\nKiểm tra cập nhật và nhật ký hệ thống.\nThực hiện biện pháp phù hợp.\nKhởi động lại nếu cần và kiểm tra kết quả."}
   };
   function recentItems() { try { return JSON.parse(localStorage.getItem("itcn-recent") || "[]"); } catch { return []; } }
+  const sortLabels = {"created-desc":"Ngày tạo: mới nhất", "created-asc":"Ngày tạo: cũ nhất", "title-asc":"Tên: A–Z", "title-desc":"Tên: Z–A", "category-asc":"Danh mục: A–Z", "category-desc":"Danh mục: Z–A"};
+  function sortItems(items, key) {
+    const [field, direction] = (state.sortOrders[key] || "created-desc").split("-");
+    return items.sort((a,b) => {
+      const comparison = field === "created" ? (new Date(a.createdAt).getTime() || 0) - (new Date(b.createdAt).getTime() || 0) : String(a[field] || "").localeCompare(String(b[field] || ""), "vi", {numeric:true, sensitivity:"base"});
+      return comparison * (direction === "desc" ? -1 : 1) || String(a.title).localeCompare(String(b.title), "vi");
+    });
+  }
+  function availableTemplates() { return state.customTemplates ?? Object.entries(caseTemplates).map(([name,fields]) => ({id:name,name,category:name,fields})); }
+  function saveConfiguration() {
+    save();
+    const now = new Date().toISOString();
+    syncItem("upsertNote", {id:"itcn-settings-v1",title:"Thiết lập ứng dụng",category:"",noteName:"",content:"",commands:"",result:"",favorite:false,deleted:true,createdAt:now,updatedAt:now,attachments:[],kind:"configuration",configuration:{categories:state.categories,categoryIcons:state.categoryIcons,templates:state.customTemplates}});
+  }
+  const categoryIconChoices = {windows:"Windows",printer:"Máy in",network:"Mạng",computer:"Máy tính",shield:"Bảo mật",mail:"Email",software:"Phần mềm",database:"Cơ sở dữ liệu",folder:"Thư mục"};
+  Object.assign(iconPaths, {
+    network:'<circle cx="12" cy="5" r="3"/><path d="M12 8v5M4 13h16M4 13v4M20 13v4"/><rect x="1" y="17" width="6" height="5"/><rect x="17" y="17" width="6" height="5"/>',
+    computer:'<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4M7 21h10"/>',
+    shield:'<path d="m12 2 9 4v6c0 6-9 10-9 10S3 18 3 12V6z"/>',
+    mail:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 5 10 8L22 5"/>',
+    software:'<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m10 8-4 4 4 4m4-8 4 4-4 4"/>',
+    database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 4 18 4 18 0V5M3 12c0 4 18 4 18 0"/>'
+  });
+  function categoryIcon(name) { return state.categoryIcons[name] || (name === "Windows" ? "windows" : name === "Máy in" ? "printer" : "folder"); }
+  function setupPage() {
+    return `<div class="page">${topHeading("Thiết lập", "Quản lý danh mục và các mẫu ghi nhận sự cố")}<section class="setup-section"><div class="setup-heading"><h2>Danh mục</h2><button class="button primary" data-action="new-category">Thêm danh mục</button></div><div class="categories-grid">${state.categories.map((name,index) => `<article class="category-card"><span class="category-color" style="background:${categoryColors[index % categoryColors.length]}">${icon(categoryIcon(name))}</span><div class="category-info"><strong>${esc(name)}</strong><small>${activeCases().filter(item => item.category === name).length} case</small></div><button class="button small" data-edit-category-new="${esc(name)}">Chỉnh sửa</button></article>`).join("")}</div></section><section class="setup-section"><div class="setup-heading"><h2>Mẫu case</h2><button class="button primary" data-action="new-template">Thêm mẫu case</button></div><div class="template-grid">${availableTemplates().map(template => `<article class="settings-card"><h3>${esc(template.name)}</h3><span class="tag">${esc(template.category)}</span><p class="template-preview">${esc(template.fields.symptoms || template.fields.resolution || "Chưa có nội dung")}</p><button class="button" data-edit-template="${esc(template.id)}">Chỉnh sửa</button> <button class="button danger" data-delete-template="${esc(template.id)}">Xóa</button></article>`).join("") || '<p>Chưa có mẫu case. Bấm Thêm mẫu case để tạo.</p>'}</div></section></div>`;
+  }
+  function settingsEditor() {
+    const editor = state.editor;
+    const template = editor.type === "template" ? availableTemplates().find(item => item.id === editor.id) : null;
+    const fields = template?.fields || {};
+    const input = (id,label,value="",multiline=false) => `<div class="field"><label for="${id}">${label}</label>${multiline ? `<textarea id="${id}">${esc(value)}</textarea>` : `<input id="${id}" required value="${esc(value)}" />`}</div>`;
+    const content = editor.type === "category" ? `${input("config-name","Tên danh mục",editor.name || "")}<fieldset class="icon-picker"><legend>Chọn icon</legend>${Object.entries(categoryIconChoices).map(([key,label]) => `<label><input type="radio" name="category-icon" value="${key}" ${categoryIcon(editor.name) === key ? "checked" : ""}/>${icon(key)} ${label}</label>`).join("")}</fieldset>` : `${input("config-name","Tên mẫu case",template?.name)}<div class="field"><label for="config-category">Danh mục</label><select id="config-category" class="select">${state.categories.map(name => `<option ${name === template?.category ? "selected" : ""}>${esc(name)}</option>`).join("")}</select></div>${[["device","Thiết bị / Phần mềm"],["os","Hệ điều hành"],["symptoms","Triệu chứng"],["cause","Nguyên nhân"],["resolution","Các bước xử lý"],["commands","Lệnh CMD / PowerShell"],["result","Kết quả / Ghi chú"]].map(([key,label]) => input(`template-${key}`,label,fields[key] || "",true)).join("")}`;
+    return `<div class="config-overlay"><section role="dialog" aria-modal="true" aria-labelledby="config-heading" class="config-dialog"><h2 id="config-heading">${editor.type === "category" ? "Danh mục" : "Mẫu case"}</h2><form id="configuration-form">${content}<div class="form-footer"><button type="button" class="button" data-action="close-config">Hủy</button><button class="button primary" type="submit">Lưu</button></div></form></section></div>`;
+  }
+  function safeReference(value) { try {const url = new URL(value); return ["https:","http:"].includes(url.protocol) ? url.href : "";} catch {return "";} }
+  function decorateNewFeatures() {
+    const key = state.view === "cases" ? "cases" : state.view === "notes" ? (state.knowledgeMode ? "knowledge" : "notes") : null;
+    if (key) {
+      document.querySelector('[data-filter="time"]')?.remove();
+      document.querySelector('.filters')?.insertAdjacentHTML('beforeend', `<select class="select" aria-label="Sắp xếp danh sách" data-sort-key="${key}">${Object.entries(sortLabels).map(([value,label]) => `<option value="${value}" ${(state.sortOrders[key] || "created-desc") === value ? "selected" : ""}>${label}</option>`).join("")}</select>`);
+    }
+    if (state.view === "note-form" && state.knowledgeMode) document.querySelector('#note-content')?.closest('.field').insertAdjacentHTML('afterend', `<div class="field full"><label for="knowledge-url">URL trang web tham khảo</label><input id="knowledge-url" type="url" value="${esc(getNote(state.noteEditingId)?.referenceUrl || "")}" placeholder="https://..." /><small>Trang web chỉ tải khi bấm Xem trang nhúng.</small></div>`);
+    if (state.knowledgeMode && ["notes","note-detail"].includes(state.view)) {
+      const url = safeReference(getNote()?.referenceUrl);
+      if(url) document.querySelector('.note-content-panel')?.insertAdjacentHTML('afterend', `<section class="reference-panel"><h3>Trang web tham khảo</h3><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)} · Mở tab mới</a><button class="button" data-action="embed-reference" data-url="${esc(url)}">Xem trang nhúng</button><p>Một số website chặn nhúng. Nếu khung trống hoặc báo lỗi, hãy dùng Mở tab mới.</p><div id="reference-frame"></div></section>`);
+    }
+    document.querySelectorAll('[data-select-case]').forEach(card => {const item = getCase(card.dataset.selectCase); const svg = card.querySelector('.case-card-title > svg'); if(item && svg) svg.outerHTML = icon(categoryIcon(item.category),17);});
+  }
   function rememberItem(type, id) { const items = recentItems().filter(item => item.id !== id); items.unshift({type,id,viewedAt:new Date().toISOString()}); localStorage.setItem("itcn-recent", JSON.stringify(items.slice(0,12))); }
   function relatedMarkup(item) {
     const all = [...state.cases, ...state.notes].filter(entry => !entry.deleted && entry.id !== item.id);
@@ -392,12 +446,14 @@
     if (state.view === "knowledge") { state.knowledgeMode = true; state.view = "notes"; }
     if (state.view === "note-detail") state.knowledgeMode = getNote()?.kind === "knowledge";
     document.documentElement.dataset.theme = state.theme;
-    const page = state.view === "form" ? formPage() : state.view === "detail" ? caseDetailPage() : state.view === "note-form" ? noteFormPage() : state.view === "note-detail" ? noteDetailPage() : state.view === "notes" ? notesPage() : state.view === "favorites" ? favoritesPage() : state.view === "search" ? searchPage() : state.view === "categories" ? categoriesPage() : state.view === "settings" ? settingsPage() : casesPage();
+    const page = state.view === "form" ? formPage() : state.view === "detail" ? caseDetailPage() : state.view === "note-form" ? noteFormPage() : state.view === "note-detail" ? noteDetailPage() : state.view === "notes" ? notesPage() : state.view === "favorites" ? favoritesPage() : state.view === "search" ? searchPage() : state.view === "categories" ? setupPage() : state.view === "settings" ? settingsPage() : casesPage();
     document.querySelector("#app").innerHTML = `${renderSidebar()}<main class="main"><div class="utility-bar"><button class="button" data-view="search">${icon("search", 16)} Tìm case & ghi chú</button><div class="sync-status" role="status"><span class="sync-label">${esc(cloudState.status)}${cloudState.lastSync ? ` · ${cloudState.lastSync.toLocaleTimeString("vi-VN")}` : ""}</span><button class="button small" data-action="retry-sync">Thử lại</button></div></div>${state.view === "search" ? unifiedSearchPage() : page}</main>${imageLightbox()}`;
     document.querySelectorAll(".code-block").forEach(node => { const value = node.querySelector("[data-copy-code]")?.dataset.copyCode; if (value) node.outerHTML = commandPanel(value); });
     document.querySelectorAll('#note-detail-panel .detail-actions [data-action="toggle-note-favorite"]').forEach(node => node.remove());
     document.querySelectorAll(".steps li").forEach(node => { const text = node.textContent.replace(/^\s*\d+[.)\s-]+/, ""); node.innerHTML = `<label><input type="checkbox" /> <span>${esc(text)}</span></label>`; });
     decorateWorkspace();
+    decorateNewFeatures();
+    if (state.editor) document.querySelector('main').insertAdjacentHTML('beforeend', settingsEditor());
   }
   function decorateWorkspace() {
     if (state.knowledgeMode && ["notes","note-form","note-detail"].includes(state.view)) {
@@ -409,11 +465,11 @@
       document.querySelector('.note-command-section')?.remove();
     }
     const form = document.querySelector('#case-form');
-    if (form) form.insertAdjacentHTML('afterbegin', `<div class="template-picker"><label>Mẫu case theo danh mục <select id="case-template" class="select"><option value="">Chọn mẫu...</option>${Object.keys(caseTemplates).map(name => `<option>${name}</option>`).join("")}</select></label><button type="button" class="button" data-action="apply-template">Áp dụng mẫu</button><small>Áp dụng sẽ thay nội dung triệu chứng và các bước xử lý.</small></div>`);
+    if (form) form.insertAdjacentHTML('afterbegin', `<div class="template-picker"><label>Mẫu case theo danh mục <select id="case-template" class="select"><option value="">Chọn mẫu...</option>${availableTemplates().map(template => `<option value="${esc(template.id)}">${esc(template.name)} · ${esc(template.category)}</option>`).join("")}</select></label><button type="button" class="button" data-action="apply-template">Áp dụng mẫu</button><small>Áp dụng sẽ thay các trường có nội dung trong mẫu sau khi xác nhận.</small></div>`);
     const detail = document.querySelector('#case-detail-panel:not(.empty), #note-detail-panel:not(.empty)');
     document.querySelectorAll('[data-select-case],[data-select-note]').forEach(card => {
       const item = card.dataset.selectCase ? getCase(card.dataset.selectCase) : getNote(card.dataset.selectNote);
-      if (item?.verifiedAt) card.querySelector('.case-card-meta')?.insertAdjacentHTML('beforeend', '<span class="tag green">✓ Đã kiểm chứng</span>');
+      if (item?.verifiedAt) card.querySelector('.favorite-toggle')?.insertAdjacentHTML('beforebegin', '<span class="tag green verified-badge">✓ Đã kiểm chứng</span>');
     });
     if (detail) {
       const item = detail.id === "case-detail-panel" ? getCase() : getNote();
@@ -454,6 +510,8 @@
   function saveNoteForm(event) {
     event.preventDefault();
     const data = noteFormData();
+    data.referenceUrl = state.knowledgeMode ? (document.getElementById('knowledge-url')?.value.trim() || "") : "";
+    if (data.referenceUrl && !safeReference(data.referenceUrl)) { toast("URL phải bắt đầu bằng http:// hoặc https://.", "error"); return; }
     data.kind = state.knowledgeMode ? "knowledge" : "note";
     data.verifiedAt = null;
     if (!data.title || !data.noteName || !data.content) { toast("Vui lòng điền tiêu đề, tên ghi chú và nội dung.", "error"); return; }
@@ -497,11 +555,11 @@
     toast("Đã thêm ảnh từ URL.");
   }
   function exportData() {
-    const payload = { format: "IT Case Notes backup", version: 2, exportedAt: new Date().toISOString(), categories: state.categories, cases: state.cases, notes: state.notes };
+    const payload = { format: "IT Case Notes backup", version: 3, exportedAt: new Date().toISOString(), categories: state.categories, cases: state.cases, notes: state.notes, categoryIcons:state.categoryIcons, customTemplates:state.customTemplates };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `it-case-notes-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url); toast("Đã xuất bản sao dữ liệu.");
   }
   function importData(file) {
-    const reader = new FileReader(); reader.onload = () => { try { const payload = JSON.parse(reader.result); if (!Array.isArray(payload.cases) || !Array.isArray(payload.categories)) throw new Error("invalid"); state.cases = payload.cases; state.notes = Array.isArray(payload.notes) ? payload.notes : []; state.categories = payload.categories; state.selectedId = state.cases.find((item) => !item.deleted)?.id || null; state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null; save(); render(); syncAllToCloud().then(() => toast("Đã khôi phục và đồng bộ dữ liệu lên Google Sheet.")).catch((error) => toast(`Đã khôi phục cục bộ nhưng đồng bộ thất bại: ${error.message}`, "error")); } catch { toast("File sao lưu không đúng định dạng IT Case Notes.", "error"); } }; reader.readAsText(file);
+    const reader = new FileReader(); reader.onload = () => { try { const payload = JSON.parse(reader.result); if (!Array.isArray(payload.cases) || !Array.isArray(payload.categories)) throw new Error("invalid"); state.cases = payload.cases; state.notes = Array.isArray(payload.notes) ? payload.notes : []; state.categories = payload.categories; state.categoryIcons = payload.categoryIcons || {}; state.customTemplates = payload.customTemplates ?? null; state.selectedId = state.cases.find((item) => !item.deleted)?.id || null; state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null; save(); saveConfiguration(); render(); syncAllToCloud().then(() => toast("Đã khôi phục và đồng bộ dữ liệu lên Google Sheet.")).catch((error) => toast(`Đã khôi phục cục bộ nhưng đồng bộ thất bại: ${error.message}`, "error")); } catch { toast("File sao lưu không đúng định dạng IT Case Notes.", "error"); } }; reader.readAsText(file);
   }
 
   let caseSelectionTimer = null;
@@ -551,9 +609,22 @@
   document.addEventListener("click", (event) => {
     const actionTarget = event.target.closest("[data-action]");
     const action = actionTarget?.dataset.action;
+    if (action === "embed-reference") {
+      const url = safeReference(actionTarget.dataset.url); if (!url) return;
+      const frame = document.createElement('iframe'); frame.src = url; frame.title = "Trang web tham khảo"; frame.referrerPolicy = "no-referrer"; frame.setAttribute('sandbox','allow-scripts allow-same-origin allow-forms allow-popups'); frame.loading = "lazy";
+      document.getElementById('reference-frame').replaceChildren(frame); actionTarget.disabled = true; return;
+    }
+    if (action === "new-category" || action === "new-template") { state.editor = {type:action === "new-category" ? "category" : "template"}; render(); return; }
+    if (action === "close-config") {state.editor = null; render(); return;}
+    const editCategoryNew = event.target.closest('[data-edit-category-new]');
+    if(editCategoryNew) {state.editor={type:"category",name:editCategoryNew.dataset.editCategoryNew}; render(); return;}
+    const editTemplate = event.target.closest('[data-edit-template]');
+    if(editTemplate) {state.editor={type:"template",id:editTemplate.dataset.editTemplate}; render(); return;}
+    const deleteTemplate = event.target.closest('[data-delete-template]');
+    if(deleteTemplate) {if(confirm('Xóa mẫu case này? Các case đã tạo sẽ được giữ lại.')) {state.customTemplates = availableTemplates().filter(item => item.id !== deleteTemplate.dataset.deleteTemplate); saveConfiguration(); render();} return;}
     const related = event.target.closest('[data-open-related]');
     if (related) { const id = related.dataset.openRelated; if (state.cases.some(item => item.id === id)) openCaseDetail(id); else openNoteDetail(id); return; }
-    if (action === "apply-template") { const name = document.getElementById('case-template').value; const template = caseTemplates[name]; if (!template) return; if ((document.getElementById('symptoms').value || document.getElementById('resolution').value) && !confirm('Thay nội dung triệu chứng và các bước xử lý bằng mẫu đã chọn?')) return; document.getElementById('category').value = name; for (const [key,value] of Object.entries(template)) document.getElementById(key).value = value; return; }
+    if (action === "apply-template") { const id = document.getElementById('case-template').value; const template = availableTemplates().find(item => item.id === id); if (!template) return; if (Object.keys(template.fields).some(key => document.getElementById(key)?.value) && !confirm('Thay nội dung các trường bằng mẫu đã chọn?')) return; document.getElementById('category').value = template.category; for (const [key,value] of Object.entries(template.fields)) {const field = document.getElementById(key); if(field) field.value = value;} return; }
     if (action === "manage-links") { document.querySelector('.link-editor').hidden = false; return; }
     if (action === "save-links" || action === "verify-item") {
       const isCase = Boolean(document.getElementById('case-detail-panel')); const item = isCase ? getCase() : getNote(); if (!item) return;
@@ -625,6 +696,7 @@
     if (event.key === "Enter" && event.target.id === "note-search") { event.preventDefault(); state.noteSearch = event.target.value; render(); }
   });
   document.addEventListener("change", (event) => {
+    if (event.target.dataset.sortKey) {state.sortOrders[event.target.dataset.sortKey] = event.target.value; save(); render(); return;}
     if (event.target.dataset.filter === "category") { state.category = event.target.value === "Tất cả danh mục" ? "Tất cả" : event.target.value; render(); }
     if (event.target.dataset.filter === "status") { state.status = event.target.value === "Tất cả trạng thái" ? "Tất cả" : event.target.value; render(); }
     if (event.target.dataset.filter === "time") { state.time = event.target.value; render(); }
@@ -634,7 +706,30 @@
     if (event.target.id === "attachment-input" && event.target.files.length) readAttachments(event.target.files);
     if (event.target.id === "settings-import" && event.target.files.length) importData(event.target.files[0]);
   });
-  document.addEventListener("submit", (event) => { if (event.target.id === "case-form") saveForm(event); if (event.target.id === "note-form") saveNoteForm(event); });
+  document.addEventListener("submit", (event) => {
+    if (event.target.id === "case-form") saveForm(event);
+    if (event.target.id === "note-form") saveNoteForm(event);
+    if (event.target.id === "configuration-form") {
+      event.preventDefault(); const name = document.getElementById('config-name').value.trim(); if(!name) return;
+      if(state.editor.type === "category") {
+        const old = state.editor.name;
+        if(state.categories.includes(name) && name !== old) {toast('Tên danh mục đã tồn tại.', 'error'); return;}
+        if(old) state.categories = state.categories.map(value => value === old ? name : value); else state.categories.push(name);
+        state.categoryIcons[name] = document.querySelector('[name="category-icon"]:checked')?.value || 'folder';
+        if(old && old !== name) {
+          delete state.categoryIcons[old];
+          for(const item of [...state.cases,...state.notes]) if(item.category === old) {item.category = name; item.updatedAt = new Date().toISOString(); syncItem(state.cases.includes(item) ? 'upsertCase' : 'upsertNote',item);}
+          state.customTemplates = availableTemplates().map(template => ({...template,category:template.category === old ? name : template.category}));
+        }
+        syncItem('upsertCategory',{name});
+      } else {
+        const fields = {}; for(const key of ['device','os','symptoms','cause','resolution','commands','result']) {const value = document.getElementById(`template-${key}`).value.trim(); if(value) fields[key] = value;}
+        const template = {id:state.editor.id || `template-${Date.now()}`,name,category:document.getElementById('config-category').value,fields};
+        const templates = availableTemplates(); state.customTemplates = [...templates.filter(item => item.id !== template.id),template];
+      }
+      state.editor = null; saveConfiguration(); render(); toast('Đã lưu thiết lập.');
+    }
+  });
   save(); render();
   hydrateFromCloud();
 })();

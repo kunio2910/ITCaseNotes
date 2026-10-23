@@ -1,5 +1,13 @@
 # Chức năng sổ tay Helpdesk
 
+## Thiết lập và tra cứu
+
+- Menu Thiết lập gồm Danh mục (tên và icon) và Mẫu case (thêm/sửa/xóa). Mẫu có tên, danh mục, thiết bị, hệ điều hành, triệu chứng, nguyên nhân, xử lý, lệnh và kết quả. Mẫu đã xóa không ảnh hưởng case đã tạo.
+- Danh sách Case, Ghi chú, Kiến thức có sáu kiểu sắp xếp theo ngày tạo, tên hoặc danh mục, theo hai chiều. Lựa chọn được nhớ riêng cho từng danh sách trên trình duyệt.
+- Nhãn Đã kiểm chứng ở cạnh trái ngôi sao yêu thích.
+- Kiến thức có URL tham khảo HTTP/HTTPS. Khung iframe chỉ tải khi bấm Xem trang nhúng; luôn có liên kết mở tab mới vì website có thể chặn nhúng. Khung có sandbox và không gửi referrer.
+- Thiết lập được đồng bộ bằng bản ghi dành riêng `itcn-settings-v1` trong Notes, ẩn khỏi danh sách và thùng rác. Metadata chứa danh mục, icon và mẫu. Không xóa/sửa bản ghi này trực tiếp trong Sheet. Backup phiên bản 3 chứa cả icon và mẫu, vẫn đọc được backup cũ.
+
 - Mẫu case: trong Thêm/Chỉnh sửa case, chọn mẫu Windows, Máy in, Mạng / Internet hoặc Microsoft 365 rồi bấm Áp dụng mẫu. Nội dung đang nhập chỉ được thay sau khi xác nhận.
 - Liên kết: trong chi tiết case, ghi chú hoặc kiến thức, chọn Chỉnh liên kết, đánh dấu các nội dung và Lưu liên kết. Liên kết là một chiều; có thể mở trực tiếp nội dung được liên kết.
 - Đã xem gần đây: lưu tối đa 12 nội dung được mở chi tiết, riêng từng trình duyệt. Nội dung đã xóa được ẩn khỏi lịch sử.
