@@ -101,10 +101,19 @@
     if (!result.ok) throw new Error(result.error || "Apps Script không xử lý được yêu cầu");
     return result;
   }
+  const pendingSync = new Map();
+  function updateSync(status) {
+    cloudState.status = status;
+    if (status === "Đã đồng bộ" || status === "Đã tải từ Google Sheet") cloudState.lastSync = new Date();
+    document.querySelectorAll(".sync-label").forEach(node => { node.textContent = `${status}${cloudState.lastSync ? ` · ${cloudState.lastSync.toLocaleTimeString("vi-VN")}` : ""}`; });
+  }
   function syncItem(action, item) {
     if (!APPS_SCRIPT_URL || !item) return;
     const payload = action === "upsertCategory" ? { action, name: item.name } : { action, item };
-    cloudRequest(payload).then(() => { cloudState.status = "Đã đồng bộ"; }).catch((error) => { cloudState.status = "Lỗi đồng bộ"; console.error(error); toast(`Không thể đồng bộ Google Sheet: ${error.message}`, "error"); });
+    const key = `${action}:${item.id || item.name}`;
+    pendingSync.set(key, payload);
+    updateSync("Đã lưu trên thiết bị · Đang đồng bộ");
+    cloudRequest(payload).then(() => { if (pendingSync.get(key) === payload) pendingSync.delete(key); updateSync(pendingSync.size ? "Còn thay đổi chờ đồng bộ" : "Đã đồng bộ"); }).catch((error) => { updateSync("Lỗi đồng bộ · Có thể thử lại"); console.error(error); toast(`Không thể đồng bộ Google Sheet: ${error.message}`, "error"); });
   }
   async function syncAllToCloud() {
     cloudState.syncing = true;
@@ -131,13 +140,13 @@
         state.selectedId = state.cases.find((item) => !item.deleted)?.id || null;
         state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null;
         save(); render();
-        cloudState.status = "Đã tải từ Google Sheet";
+        updateSync("Đã tải từ Google Sheet");
       } else {
         await syncAllToCloud();
         toast("Đã đưa dữ liệu mẫu lên Google Sheet.");
       }
     } catch (error) {
-      cloudState.status = "Ngoại tuyến";
+      updateSync("Ngoại tuyến · Dữ liệu trên thiết bị");
       console.error(error);
       toast(`Không tải được dữ liệu Google Sheet: ${error.message}`, "error");
     }
@@ -151,8 +160,8 @@
   const getNote = (id = state.noteSelectedId) => state.notes.find((item) => item.id === id) || null;
   const matches = (item, search = state.search) => {
     if (item.deleted) return false;
-    const haystack = [item.title, item.category, item.status, item.device, item.os, item.symptoms, item.cause, item.resolution, item.result, ...(item.tags || [])].join(" ").toLowerCase();
-    return !search.trim() || haystack.includes(search.trim().toLowerCase());
+    const haystack = [item.title, item.category, item.status, item.device, item.os, item.symptoms, item.cause, item.resolution, item.commands, item.content, item.noteName, item.result, ...(item.tags || [])].join(" ");
+    return !search.trim() || normalizeSearch(haystack).includes(normalizeSearch(search.trim()));
   };
   const filteredCases = () => {
     let items = activeCases().filter((item) => matches(item));
@@ -186,8 +195,8 @@
       <div class="brand"><span class="brand-mark">${icon("book", 21)}</span><div><strong>IT Case Notes</strong><small>Sổ tay xử lý sự cố IT</small></div></div>
       <nav class="nav" aria-label="Điều hướng chính">
         ${navButton("cases", "Tất cả case", "grid", activeCases().length)}
-        ${navButton("favorites", "Yêu thích", "star", favoriteCount())}
         ${navButton("notes", "Ghi chú", "book", activeNotes().length)}
+        ${navButton("favorites", "Yêu thích", "star", favoriteCount())}
         ${navButton("categories", "Danh mục", "folder", state.categories.length)}
         ${navButton("settings", "Cài đặt & Sao lưu", "settings", deletedCount ? `${deletedCount} đã xóa` : "")}
       </nav>
@@ -350,10 +359,23 @@
       <section class="settings-card" style="grid-column:1/-1"><h3>${icon("trash", 18)} Thùng rác ${deletedCount ? `<span class="tag red">${deletedCount}</span>` : ""}</h3><p>Case và ghi chú đã xóa mềm được giữ lại để khôi phục khi cần.</p>${deletedCount ? `<div class="trash-list">${deleted}</div>` : `<span class="subtle">Thùng rác đang trống.</span>`}</section></div></div>`;
   }
 
+  function normalizeSearch(value) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase(); }
+  function commandPanel(value) {
+    return `<div class="command-list"><div class="command-heading">CMD / PowerShell <button class="button small" data-copy-code="${esc(value)}">Sao chép tất cả</button></div>${value.split("\n").filter(line => line.trim()).map(line => `<div class="command-line"><code>${esc(line)}</code><button class="button small" data-copy-code="${esc(line)}" aria-label="Sao chép lệnh ${esc(line)}">Sao chép</button></div>`).join("")}</div>`;
+  }
+  function unifiedSearchPage() {
+    const cases = activeCases().filter(item => matches(item));
+    const notes = activeNotes().filter(item => matches(item));
+    const group = (title, items, kind) => `<section class="search-group"><h2>${title} (${items.length})</h2>${items.map(item => `<button class="search-hit" data-select-${kind}="${esc(item.id)}"><strong>${esc(item.title)}</strong><span>${esc(item.category)} · ${esc((item.symptoms || item.content || "").slice(0,180))}</span></button>`).join("") || '<p>Không có kết quả phù hợp.</p>'}</section>`;
+    return `<div class="page">${topHeading("Tìm kiếm chung", "Tra cứu case, ghi chú và lệnh; hỗ trợ từ khóa không dấu")}<label class="search-input"><input id="global-search" aria-label="Tìm kiếm chung" type="search" value="${esc(state.search)}" placeholder="Nhập lỗi, thiết bị, lệnh hoặc nội dung..." /></label>${group("Case", cases, "case")}${group("Ghi chú", notes, "note")}</div>`;
+  }
   function render() {
     document.documentElement.dataset.theme = state.theme;
     const page = state.view === "form" ? formPage() : state.view === "detail" ? caseDetailPage() : state.view === "note-form" ? noteFormPage() : state.view === "note-detail" ? noteDetailPage() : state.view === "notes" ? notesPage() : state.view === "favorites" ? favoritesPage() : state.view === "search" ? searchPage() : state.view === "categories" ? categoriesPage() : state.view === "settings" ? settingsPage() : casesPage();
-    document.querySelector("#app").innerHTML = `${renderSidebar()}<main class="main">${page}</main>${imageLightbox()}`;
+    document.querySelector("#app").innerHTML = `${renderSidebar()}<main class="main"><div class="utility-bar"><button class="button" data-view="search">${icon("search", 16)} Tìm case & ghi chú</button><div class="sync-status" role="status"><span class="sync-label">${esc(cloudState.status)}${cloudState.lastSync ? ` · ${cloudState.lastSync.toLocaleTimeString("vi-VN")}` : ""}</span><button class="button small" data-action="retry-sync">Thử lại</button></div></div>${state.view === "search" ? unifiedSearchPage() : page}</main>${imageLightbox()}`;
+    document.querySelectorAll(".code-block").forEach(node => { const value = node.querySelector("[data-copy-code]")?.dataset.copyCode; if (value) node.outerHTML = commandPanel(value); });
+    document.querySelectorAll('#note-detail-panel .detail-actions [data-action="toggle-note-favorite"]').forEach(node => node.remove());
+    document.querySelectorAll(".steps li").forEach(node => { const text = node.textContent.replace(/^\s*\d+[.)\s-]+/, ""); node.innerHTML = `<label><input type="checkbox" /> <span>${esc(text)}</span></label>`; });
   }
 
   function focusSearch(id = "case-search") { const input = document.getElementById(id); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } }
@@ -477,12 +499,14 @@
   document.addEventListener("click", (event) => {
     const actionTarget = event.target.closest("[data-action]");
     const action = actionTarget?.dataset.action;
+    if (action === "retry-sync") { for (const payload of pendingSync.values()) syncItem(payload.action, payload.item || {name: payload.name}); if (!pendingSync.size) hydrateFromCloud(); return; }
     if (event.target.classList.contains("image-lightbox") || action === "close-image") { state.lightbox = null; render(); return; }
     if (action === "open-image") { state.lightbox = { src: actionTarget.dataset.imageSrc, alt: actionTarget.dataset.imageAlt || "Ảnh đính kèm" }; render(); return; }
     if (action === "toggle-case-favorite" || action === "toggle-note-favorite") { event.preventDefault(); event.stopPropagation(); toggleFavorite(action === "toggle-note-favorite" ? "note" : "case", actionTarget.dataset.id); return; }
     const view = event.target.closest("[data-view]"); if (view) { state.view = view.dataset.view; state.search = state.view === "search" ? state.search : state.search; render(); return; }
     const select = event.target.closest("[data-select-case]"); if (select) {
       const id = select.dataset.selectCase;
+      if (state.view === "search" || window.matchMedia("(max-width: 820px)").matches) { openCaseDetail(id); return; }
       if (event.detail >= 2) { openCaseDetail(id); return; }
       clearTimeout(caseSelectionTimer);
       caseSelectionTimer = setTimeout(() => { state.selectedId = id; if (state.view === "search") state.view = "cases"; render(); }, 450);
@@ -490,6 +514,7 @@
     }
     const noteSelect = event.target.closest("[data-select-note]"); if (noteSelect) {
       const id = noteSelect.dataset.selectNote;
+      if (state.view === "search" || window.matchMedia("(max-width: 820px)").matches) { openNoteDetail(id); return; }
       if (event.detail >= 2) { openNoteDetail(id); return; }
       clearTimeout(noteSelectionTimer);
       noteSelectionTimer = setTimeout(() => { state.noteSelectedId = id; render(); }, 450);
