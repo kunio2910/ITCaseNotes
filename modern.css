@@ -266,6 +266,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .color-picker { width: 52px; height: 38px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; }
 .related-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .related-heading h3 { margin-bottom: 0; }
+.form-related-panel { margin-top: 18px; }
 .related-current { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .related-current p { margin: 0; color: var(--muted); font-size: 13px; }
 .link-editor { display: grid; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }

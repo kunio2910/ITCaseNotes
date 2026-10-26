@@ -170,6 +170,34 @@
   function decorateCloudinaryButtons() {
     document.querySelectorAll(".cloudinary-button").forEach(node => { node.dataset.action = "open-cloudinary"; node.setAttribute("role", "button"); node.removeAttribute("target"); node.setAttribute("href", "#"); });
   }
+  function decorateFormRelatedEditor() {
+    if (!["form", "note-form"].includes(state.view) || document.getElementById("form-related-panel")) return;
+    const form = document.querySelector("#case-form, #note-form");
+    if (!form) return;
+    const current = state.view === "form" ? getCase(state.editingId) : getNote(state.noteEditingId);
+    const item = current || {id:"", linkedIds:[]};
+    form.querySelector(".form-footer")?.insertAdjacentHTML("beforebegin", relatedMarkup(item, true));
+  }
+  function readRelatedSelection() { return [...document.querySelectorAll("#form-related-panel [data-link-id]:checked")].map(node => node.dataset.linkId); }
+  function applyRelatedLinks(item, requestedIds = []) {
+    const all = [...state.cases, ...state.notes].filter(entry => !entry.deleted);
+    const available = new Set(all.filter(entry => entry.id !== item.id).map(entry => entry.id));
+    const nextIds = [...new Set(requestedIds)].filter(id => available.has(id));
+    const changed = [];
+    const currentIds = [...new Set(item.linkedIds || [])];
+    if (JSON.stringify(currentIds) !== JSON.stringify(nextIds)) { item.linkedIds = nextIds; changed.push(item); }
+    for (const entry of all) {
+      if (entry.id === item.id) continue;
+      const shouldLink = nextIds.includes(entry.id);
+      const hasLink = (entry.linkedIds || []).includes(item.id);
+      if (shouldLink && !hasLink) { entry.linkedIds = [...(entry.linkedIds || []), item.id]; changed.push(entry); }
+      if (!shouldLink && hasLink) { entry.linkedIds = (entry.linkedIds || []).filter(id => id !== item.id); changed.push(entry); }
+    }
+    const now = new Date().toISOString();
+    changed.forEach(entry => { entry.updatedAt = now; });
+    return changed;
+  }
+  function syncRelatedChanges(changes = []) { changes.forEach(item => syncItem(state.cases.includes(item) ? "upsertCase" : "upsertNote", item)); }
   const uid = () => `case-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const formatDate = (value) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
   const formatDateTime = (value) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -557,7 +585,7 @@
       option.style.display = visible ? "flex" : "none";
     });
   }
-  function relatedMarkup(item) {
+  function legacyRelatedMarkupV2(item) {
     const all = activeRelatedEntries(item);
     const linkedIds = validLinkedIds(item, all);
     const linked = linkedIds.map(id => all.find(entry => entry.id === id)).filter(Boolean);
@@ -567,6 +595,19 @@
       return `<label class="related-option" data-related-option data-search="${esc(searchText)}" style="display:${selected ? "flex" : "none"}"><input type="checkbox" data-link-id="${esc(entry.id)}" ${selected ? "checked" : ""} /> <span><strong>${esc(entry.title)}</strong><small>${esc(entry.category)}${entry.noteName ? ` · ${esc(entry.noteName)}` : ""}${entry.kind === "knowledge" ? " · Kiến thức" : ""}${entry.tags?.length ? ` · ${esc(entry.tags.join(", "))}` : ""}</small></span></label>`;
     }).join("");
     return `<section class="related-panel"><div class="related-heading"><h3>Nội dung liên quan</h3><span class="subtle">${linked.length} topic</span></div><div class="related-current">${linked.map(entry => `<button class="button" data-open-related="${esc(entry.id)}">${esc(entry.title)}</button>`).join("") || '<p>Chưa có liên kết.</p>'}</div><button class="button small" data-action="manage-links">Chọn nội dung liên quan</button><div class="link-editor" hidden><label class="search-input related-search-input">${icon("search", 16)}<input id="related-search" type="search" placeholder="Tìm topic theo tên hoặc danh mục..." aria-label="Tìm topic liên quan" /></label><div class="related-options">${options || '<p class="subtle">Chưa có topic khác để liên kết.</p>'}</div><button class="button primary" data-action="save-links">Lưu liên kết</button></div></section>`;
+  }
+  function relatedMarkup(item, editable = false) {
+    const all = activeRelatedEntries(item);
+    const linkedIds = validLinkedIds(item, all);
+    const linked = linkedIds.map(id => all.find(entry => entry.id === id)).filter(Boolean);
+    if (!editable && !linked.length) return "";
+    const options = all.map(entry => {
+      const selected = linkedIds.includes(entry.id);
+      const searchText = normalizeSearch(`${entry.title} ${entry.category} ${entry.noteName || ""} ${richTextToPlain(entry.content)} ${(entry.tags || []).join(" ")}`);
+      return `<label class="related-option" data-related-option data-search="${esc(searchText)}" style="display:${selected ? "flex" : "none"}"><input type="checkbox" data-link-id="${esc(entry.id)}" ${selected ? "checked" : ""} /> <span><strong>${esc(entry.title)}</strong><small>${esc(entry.category)}${entry.noteName ? ` · ${esc(entry.noteName)}` : ""}${entry.kind === "knowledge" ? " · Kiến thức" : ""}${entry.tags?.length ? ` · ${esc(entry.tags.join(", "))}` : ""}</small></span></label>`;
+    }).join("");
+    if (!editable) return `<section class="related-panel"><div class="related-heading"><h3>Nội dung liên quan</h3><span class="subtle">${linked.length} topic</span></div><div class="related-current">${linked.map(entry => `<button class="button" data-open-related="${esc(entry.id)}">${esc(entry.title)}</button>`).join("")}</div></section>`;
+    return `<section id="form-related-panel" class="related-panel form-related-panel"><div class="related-heading"><h3>Nội dung liên quan</h3><span class="subtle">${linked.length} topic đã chọn</span></div><p class="field-help">Nhập từ khóa để tìm và chọn Case, ghi chú hoặc kiến thức liên quan.</p><label class="search-input related-search-input">${icon("search", 16)}<input id="related-search" type="search" placeholder="Tìm theo tên, nội dung, danh mục hoặc tag..." aria-label="Tìm topic liên quan" /></label><div class="related-options">${options || '<p class="subtle">Chưa có topic khác để liên kết.</p>'}</div></section>`;
   }
   function render() {
     if (state.view === "knowledge") { state.knowledgeMode = true; state.view = "notes"; }
@@ -579,6 +620,7 @@
     document.querySelectorAll(".steps li").forEach(node => { const text = node.textContent.replace(/^\s*\d+[.)\s-]+/, ""); node.innerHTML = `<label><input type="checkbox" /> <span>${esc(text)}</span></label>`; });
     decorateWorkspace();
     decorateNewFeatures();
+    decorateFormRelatedEditor();
     decorateNoteTags();
     decorateTopicColorPicker();
     decorateRichEditors();
@@ -630,7 +672,7 @@
   }
   function formData() {
     const field = (id) => formFieldValue(id);
-    return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
+    return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), linkedIds: readRelatedSelection(), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
   }
   function saveForm(event) {
     event.preventDefault();
@@ -638,24 +680,27 @@
     if (data.referenceUrl && !safeReference(data.referenceUrl)) { toast("URL phải bắt đầu bằng http:// hoặc https://.", "error"); return; }
     if (!data.title || !data.category) { toast("Vui lòng điền tiêu đề và danh mục.", "error"); return; }
     const now = new Date().toISOString();
+    let savedItem; let relationChanges = [];
     if (state.editingId) {
       const index = state.cases.findIndex((item) => item.id === state.editingId);
       state.cases[index] = { ...state.cases[index], ...data, attachments: data.attachmentsTouched ? data.attachments : state.cases[index].attachments || [], updatedAt: now };
+      savedItem = state.cases[index]; relationChanges = applyRelatedLinks(savedItem, data.linkedIds);
       state.selectedId = state.editingId; toast("Đã lưu thay đổi cho case.");
     } else {
       const item = { ...data, id: uid(), favorite: false, deleted: false, createdAt: now, updatedAt: now, attachments: data.attachments || [] };
-      state.cases.unshift(item); state.selectedId = item.id; toast("Đã thêm case mới.");
+      state.cases.unshift(item); savedItem = item; relationChanges = applyRelatedLinks(item, data.linkedIds); state.selectedId = item.id; toast("Đã thêm case mới.");
     }
     state.pendingAttachments = []; state.pendingAttachmentsReady = false; state.editingId = null; state.view = "cases"; save(); render();
-    syncItem("upsertCase", state.cases.find((item) => item.id === state.selectedId));
+    syncRelatedChanges(relationChanges);
+    if (!relationChanges.includes(savedItem)) syncItem("upsertCase", savedItem);
   }
   function noteFormData() {
     const field = (id) => formFieldValue(id);
-    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), tags: [...document.querySelectorAll("#note-tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
+    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), tags: [...document.querySelectorAll("#note-tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), linkedIds: readRelatedSelection(), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
   }
   function captureFormDraft() {
     const ids = ["title", "category", "status", "device", "os", "symptoms", "cause", "resolution", "commands", "result", "reference-url", "topic-color", "note-title", "note-category", "note-name", "note-content", "note-commands", "note-result"];
-    state.formDraft = {values:Object.fromEntries(ids.map(id => [id, formFieldValue(id)]).filter(([, value]) => value !== "")), tags:[...document.querySelectorAll("#tag-editor .tag, #note-tag-editor .tag")].map(node => node.textContent.replace("×", "").trim())};
+    state.formDraft = {values:Object.fromEntries(ids.map(id => [id, formFieldValue(id)]).filter(([, value]) => value !== "")), tags:[...document.querySelectorAll("#tag-editor .tag, #note-tag-editor .tag")].map(node => node.textContent.replace("×", "").trim()), relatedIds:readRelatedSelection()};
   }
   function restoreFormDraft() {
     if (!state.formDraft) return;
@@ -674,6 +719,10 @@
     }
     const topicInput = document.getElementById("topic-color");
     if (topicInput) document.querySelectorAll("[data-topic-color]").forEach(node => { const active = node.dataset.topicColor.toLowerCase() === topicInput.value.toLowerCase(); node.classList.toggle("active", active); node.setAttribute("aria-pressed", String(active)); });
+    if (Array.isArray(state.formDraft.relatedIds)) {
+      document.querySelectorAll("#form-related-panel [data-link-id]").forEach(node => { node.checked = state.formDraft.relatedIds.includes(node.dataset.linkId); });
+      filterRelatedOptions(document.getElementById("related-search")?.value || "");
+    }
     state.formDraft = null;
   }
   function saveNoteForm(event) {
@@ -683,16 +732,19 @@
     data.kind = state.knowledgeMode ? "knowledge" : "note";
     if (!data.title || !data.noteName) { toast("Vui lòng điền tiêu đề và tên ghi chú.", "error"); return; }
     const now = new Date().toISOString();
+    let savedItem; let relationChanges = [];
     if (state.noteEditingId) {
       const index = state.notes.findIndex((item) => item.id === state.noteEditingId);
       state.notes[index] = { ...state.notes[index], ...data, attachments: data.attachmentsTouched ? data.attachments : state.notes[index].attachments || [], updatedAt: now };
+      savedItem = state.notes[index]; relationChanges = applyRelatedLinks(savedItem, data.linkedIds);
       state.noteSelectedId = state.noteEditingId; toast("Đã lưu thay đổi cho ghi chú.");
     } else {
       const item = { ...data, id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, favorite: false, createdAt: now, updatedAt: now, deleted: false, attachments: data.attachments || [] };
-      state.notes.unshift(item); state.noteSelectedId = item.id; toast("Đã thêm ghi chú mới.");
+      state.notes.unshift(item); savedItem = item; relationChanges = applyRelatedLinks(item, data.linkedIds); state.noteSelectedId = item.id; toast("Đã thêm ghi chú mới.");
     }
     state.pendingAttachments = []; state.pendingAttachmentsReady = false; state.noteEditingId = null; state.view = "notes"; save(); render();
-    syncItem("upsertNote", state.notes.find((item) => item.id === state.noteSelectedId));
+    syncRelatedChanges(relationChanges);
+    if (!relationChanges.includes(savedItem)) syncItem("upsertNote", savedItem);
   }
   function rememberRichSelection(editor) {
     const selection = window.getSelection();
@@ -877,9 +929,10 @@
     if (action === "manage-links") { const editor = document.querySelector('.link-editor'); if (editor) { editor.hidden = false; filterRelatedOptions(""); document.getElementById('related-search')?.focus(); } return; }
     if (action === "save-links" || action === "verify-item") {
       const isCase = Boolean(document.getElementById('case-detail-panel')); const item = isCase ? getCase() : getNote(); if (!item) return;
-      if(action === "save-links") item.linkedIds = validLinkedIds({linkedIds:[...document.querySelectorAll('[data-link-id]:checked')].map(node => node.dataset.linkId)}, activeRelatedEntries(item));
+      let relationChanges = [];
+      if(action === "save-links") relationChanges = applyRelatedLinks(item, [...document.querySelectorAll('[data-link-id]:checked')].map(node => node.dataset.linkId));
       else item.verifiedAt = item.verifiedAt ? null : new Date().toISOString();
-      item.updatedAt = new Date().toISOString(); save(); render(); syncItem(isCase ? 'upsertCase' : 'upsertNote', item); return;
+      item.updatedAt = new Date().toISOString(); save(); render(); syncRelatedChanges(relationChanges); if (!relationChanges.includes(item)) syncItem(isCase ? 'upsertCase' : 'upsertNote', item); return;
     }
     if (action === "retry-sync") { for (const payload of pendingSync.values()) syncItem(payload.action, payload.item || {name: payload.name}); if (!pendingSync.size) hydrateFromCloud(); return; }
     if (action === "empty-trash") { if (confirm("Xóa vĩnh viễn toàn bộ case và ghi chú trong thùng rác?")) emptyTrash(); return; }
