@@ -660,7 +660,9 @@
       if (state.view === "search" || window.matchMedia("(max-width: 820px)").matches) { openCaseDetail(id); return; }
       if (event.detail >= 2) { openCaseDetail(id); return; }
       clearTimeout(caseSelectionTimer);
-      caseSelectionTimer = setTimeout(() => { state.selectedId = id; if (state.view === "search") state.view = "cases"; render(); }, 450);
+      state.selectedId = id;
+      if (state.view === "search") state.view = "cases";
+      render();
       return;
     }
     const noteSelect = event.target.closest("[data-select-note]"); if (noteSelect) {
@@ -668,7 +670,8 @@
       if (state.view === "search" || window.matchMedia("(max-width: 820px)").matches) { openNoteDetail(id); return; }
       if (event.detail >= 2) { openNoteDetail(id); return; }
       clearTimeout(noteSelectionTimer);
-      noteSelectionTimer = setTimeout(() => { state.noteSelectedId = id; render(); }, 450);
+      state.noteSelectedId = id;
+      render();
       return;
     }
     if (action === "add-case") { state.view = "form"; state.editingId = null; state.pendingAttachments = []; render(); return; }

@@ -151,3 +151,93 @@ button:focus-visible,a:focus-visible,select:focus-visible { outline: 3px solid #
   .button.small { min-height: 36px; }
 }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+/* Readability pass: larger type, stronger contrast, and comfortable touch targets. */
+:root {
+  --ink: #202942;
+  --muted: #536176;
+  --line: #c7d0df;
+  --blue-600: #5143c4;
+  --blue-700: #40329f;
+}
+body { color: var(--ink); }
+.brand strong { font-size: 16px; }
+.brand small, .sidebar-footer, .sync-status, .eyebrow { font-size: 11px; color: #536176; }
+.nav-button { color: #46546d; font-size: 13px; }
+.nav-button.active { color: #40329f; background: #e5e0ff; }
+.page-heading .subtle, .search-input input { font-size: 14px; color: #536176; }
+.select { font-size: 13px; color: #27344b; border-color: #b9c4d5; }
+.result-count { font-size: 12px; color: #536176; border-top-color: #c7d0df; }
+.case-card-title { font-size: 15px; color: #202942; }
+.case-card-summary { font-size: 13px; color: #536176; }
+.case-card-meta { font-size: 12px; color: #536176; }
+.tag { font-size: 11px; padding: 5px 8px; color: #4d3c98; }
+.tag.green { color: #176c57; }
+.tag.purple { color: #68429b; }
+.tag.red { color: #9d3f55; }
+.detail-title h2 { font-size: 21px; }
+.info-item label { color: #536176; font-size: 12px; }
+.info-item strong { font-size: 13px; color: #202942; }
+.detail-section p, .steps label { font-size: 14px; color: #27344b; }
+.section-heading { font-size: 14px; color: #202942; }
+.command-heading, .verification { font-size: 12px; }
+.command-line code { font-size: 13px; }
+.recent-panel h2, .related-panel h3 { font-size: 15px; }
+.field label { font-size: 14px; color: #202942; }
+.field input, .field textarea { font-size: 14px; color: #202942; border-color: #b9c4d5; }
+.field-help, .template-picker small, .reference-panel p { font-size: 12px; color: #536176; }
+.form-section h3 { font-size: 15px; color: #3f4a65; }
+.button { font-size: 13px; }
+.button.small { font-size: 12px; }
+.button.primary { background: linear-gradient(125deg, #5b4bd1, #4434aa); }
+.button.primary:hover { background: #35288d; }
+button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline-color: #40329f; }
+
+[data-theme="dark"] .brand small,
+[data-theme="dark"] .sidebar-footer,
+[data-theme="dark"] .sync-status,
+[data-theme="dark"] .eyebrow,
+[data-theme="dark"] .page-heading .subtle,
+[data-theme="dark"] .case-card-summary,
+[data-theme="dark"] .case-card-meta,
+[data-theme="dark"] .result-count,
+[data-theme="dark"] .field-help,
+[data-theme="dark"] .template-picker small,
+[data-theme="dark"] .reference-panel p { color: #b9c4d8; }
+[data-theme="dark"] .nav-button { color: #c1ccdf; }
+[data-theme="dark"] .nav-button.active { color: #eeeaff; background: #4b4274; }
+[data-theme="dark"] .case-card-title,
+[data-theme="dark"] .info-item strong,
+[data-theme="dark"] .section-heading,
+[data-theme="dark"] .field label { color: #eef3ff; }
+[data-theme="dark"] .detail-section p,
+[data-theme="dark"] .steps label { color: #dbe5f4; }
+
+@media(max-width:820px) {
+  .nav-button { min-height: 56px; font-size: 11px; }
+  .brand strong { font-size: 17px; }
+  .brand small { font-size: 12px; }
+  .main { padding: 22px 16px 34px; }
+  .page-heading h1 { font-size: 30px; }
+  .page-heading .subtle { font-size: 14px; }
+  .toolbar { padding: 18px; }
+  .search-input input, .select { min-height: 46px; font-size: 14px; }
+  .result-count { font-size: 12px; }
+  .case-card { padding: 19px 18px; }
+  .case-card-title { font-size: 15px; }
+  .case-card-summary { font-size: 13px; }
+  .case-card-meta { font-size: 12px; }
+  .tag { font-size: 11px; }
+  .button { font-size: 14px; min-height: 44px; }
+  .button.small { font-size: 13px; min-height: 40px; }
+  .detail-title h2 { font-size: 22px; }
+  .detail-section p, .steps label { font-size: 14px; line-height: 1.85; }
+  .command-line code { font-size: 13px; }
+  .form-section h3 { font-size: 16px; }
+  .field label { font-size: 14px; }
+  .field input, .field textarea { min-height: 46px; font-size: 14px; }
+}
+@media(max-width:560px) {
+  .nav-button { font-size: 10px; }
+  .page-heading h1 { font-size: 29px; }
+}
