@@ -167,6 +167,9 @@
     if (!wrapper) return;
     wrapper.innerHTML = `<div class="topic-swatches" role="radiogroup" aria-label="Màu chủ đề">${topicColorChoices.map(choice => `<button type="button" class="topic-swatch ${choice.value.toLowerCase() === selected.toLowerCase() ? "active" : ""}" style="--swatch-color:${choice.value}" data-topic-color="${choice.value}" aria-label="${choice.label}" aria-pressed="${choice.value.toLowerCase() === selected.toLowerCase()}"><span></span>${choice.label}</button>`).join("")}</div><input id="topic-color" type="hidden" value="${selected}" />`;
   }
+  function decorateCloudinaryButtons() {
+    document.querySelectorAll(".cloudinary-button").forEach(node => { node.dataset.action = "open-cloudinary"; node.setAttribute("role", "button"); node.removeAttribute("target"); node.setAttribute("href", "#"); });
+  }
   const uid = () => `case-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const formatDate = (value) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
   const formatDateTime = (value) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -181,7 +184,7 @@
     categories: stored?.categories?.length ? stored.categories : defaultCategories,
     view: "cases", selectedId: stored?.cases?.find((item) => !item.deleted)?.id || seedCases[0].id, editingId: null, search: "", category: "Tất cả", status: "Tất cả", time: "Mới nhất",
     noteSelectedId: stored?.notes?.find((item) => !item.deleted)?.id || seedNotes[0].id, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả",
-    theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], pendingAttachmentsReady: false, lightbox: null,
+    theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], pendingAttachmentsReady: false, lightbox: null, cloudinaryOpen: false,
     categoryIcons: stored?.categoryIcons || {}, customTemplates: stored?.customTemplates ?? null, sortOrders: stored?.sortOrders || {}, purgedIds: new Set(stored?.purgedIds || []), formDraft: null, editor: null, richSelection: null
   };
 
@@ -412,6 +415,11 @@
     if (!state.lightbox) return "";
     return `<div class="image-lightbox" role="dialog" aria-modal="true" aria-label="Xem ảnh phóng to"><div class="image-lightbox-content"><button class="image-lightbox-close" type="button" data-action="close-image" aria-label="Đóng ảnh">×</button><img src="${esc(state.lightbox.src)}" alt="${esc(state.lightbox.alt)}" /></div></div>`;
   }
+  function cloudinaryPopup() {
+    if (!state.cloudinaryOpen) return "";
+    const url = "https://console.cloudinary.com/console/media_library";
+    return `<div class="cloudinary-modal" data-action="close-cloudinary" role="dialog" aria-modal="true" aria-labelledby="cloudinary-heading"><section class="cloudinary-dialog"><div class="cloudinary-dialog-heading"><div><p class="eyebrow">IMAGE STORAGE</p><h2 id="cloudinary-heading">Cloudinary</h2></div><button type="button" class="image-lightbox-close" data-action="close-cloudinary" aria-label="Đóng Cloudinary">×</button></div><p class="cloudinary-dialog-help">Tải ảnh lên Cloudinary ngay trong cửa sổ này, sau đó sao chép Secure URL vào ô URL hình ảnh.</p><iframe src="${url}" title="Cloudinary Media Library" loading="lazy"></iframe><div class="cloudinary-dialog-footer"><span>Nếu Cloudinary không cho phép nhúng, hãy mở trang quản lý ở nút bên dưới.</span><a class="button small" href="${url}" target="_blank" rel="noopener noreferrer">Mở Cloudinary riêng</a><button type="button" class="button small primary" data-action="close-cloudinary">Đóng</button></div></section></div>`;
+  }
 
   function notesPage() {
     const items = filteredNotes();
@@ -540,14 +548,23 @@
   }
   function activeRelatedEntries(item) { return [...state.cases, ...state.notes].filter(entry => !entry.deleted && entry.id !== item.id); }
   function validLinkedIds(item, entries = activeRelatedEntries(item)) { const available = new Set(entries.map(entry => entry.id)); return [...new Set(item.linkedIds || [])].filter(id => available.has(id)); }
+  function filterRelatedOptions(value = "") {
+    const term = normalizeSearch(value.trim());
+    document.querySelectorAll("[data-related-option]").forEach(option => {
+      const selected = Boolean(option.querySelector("[data-link-id]")?.checked);
+      const visible = term ? option.dataset.search.includes(term) : selected;
+      option.hidden = !visible;
+      option.style.display = visible ? "flex" : "none";
+    });
+  }
   function relatedMarkup(item) {
     const all = activeRelatedEntries(item);
     const linkedIds = validLinkedIds(item, all);
     const linked = linkedIds.map(id => all.find(entry => entry.id === id)).filter(Boolean);
     const options = all.map(entry => {
       const selected = linkedIds.includes(entry.id);
-      const searchText = normalizeSearch(`${entry.title} ${entry.category} ${entry.noteName || ""} ${(entry.tags || []).join(" ")}`);
-      return `<label class="related-option" data-related-option data-search="${esc(searchText)}" ${selected ? "" : "hidden"}><input type="checkbox" data-link-id="${esc(entry.id)}" ${selected ? "checked" : ""} /> <span><strong>${esc(entry.title)}</strong><small>${esc(entry.category)}${entry.kind === "knowledge" ? " · Kiến thức" : ""}</small></span></label>`;
+      const searchText = normalizeSearch(`${entry.title} ${entry.category} ${entry.noteName || ""} ${richTextToPlain(entry.content)} ${(entry.tags || []).join(" ")}`);
+      return `<label class="related-option" data-related-option data-search="${esc(searchText)}" style="display:${selected ? "flex" : "none"}"><input type="checkbox" data-link-id="${esc(entry.id)}" ${selected ? "checked" : ""} /> <span><strong>${esc(entry.title)}</strong><small>${esc(entry.category)}${entry.noteName ? ` · ${esc(entry.noteName)}` : ""}${entry.kind === "knowledge" ? " · Kiến thức" : ""}${entry.tags?.length ? ` · ${esc(entry.tags.join(", "))}` : ""}</small></span></label>`;
     }).join("");
     return `<section class="related-panel"><div class="related-heading"><h3>Nội dung liên quan</h3><span class="subtle">${linked.length} topic</span></div><div class="related-current">${linked.map(entry => `<button class="button" data-open-related="${esc(entry.id)}">${esc(entry.title)}</button>`).join("") || '<p>Chưa có liên kết.</p>'}</div><button class="button small" data-action="manage-links">Chọn nội dung liên quan</button><div class="link-editor" hidden><label class="search-input related-search-input">${icon("search", 16)}<input id="related-search" type="search" placeholder="Tìm topic theo tên hoặc danh mục..." aria-label="Tìm topic liên quan" /></label><div class="related-options">${options || '<p class="subtle">Chưa có topic khác để liên kết.</p>'}</div><button class="button primary" data-action="save-links">Lưu liên kết</button></div></section>`;
   }
@@ -556,7 +573,7 @@
     if (state.view === "note-detail") state.knowledgeMode = getNote()?.kind === "knowledge";
     document.documentElement.dataset.theme = state.theme;
     const page = state.view === "form" ? formPage() : state.view === "detail" ? caseDetailPage() : state.view === "note-form" ? noteFormPage() : state.view === "note-detail" ? noteDetailPage() : state.view === "notes" ? notesPage() : state.view === "favorites" ? favoritesPage() : state.view === "search" ? searchPage() : state.view === "categories" ? setupPage() : state.view === "settings" ? settingsPage() : casesPage();
-    document.querySelector("#app").innerHTML = `${renderSidebar()}<main class="main"><div class="utility-bar"><button class="button" data-view="search">${icon("search", 16)} Tìm case & ghi chú</button><div class="sync-status" role="status"><span class="sync-label">${esc(cloudState.status)}${cloudState.lastSync ? ` · ${cloudState.lastSync.toLocaleTimeString("vi-VN")}` : ""}</span><button class="button small" data-action="retry-sync">Thử lại</button></div></div>${state.view === "search" ? unifiedSearchPage() : page}</main>${imageLightbox()}`;
+    document.querySelector("#app").innerHTML = `${renderSidebar()}<main class="main"><div class="utility-bar"><button class="button" data-view="search">${icon("search", 16)} Tìm case & ghi chú</button><div class="sync-status" role="status"><span class="sync-label">${esc(cloudState.status)}${cloudState.lastSync ? ` · ${cloudState.lastSync.toLocaleTimeString("vi-VN")}` : ""}</span><button class="button small" data-action="retry-sync">Thử lại</button></div></div>${state.view === "search" ? unifiedSearchPage() : page}</main>${imageLightbox()}${cloudinaryPopup()}`;
     document.querySelectorAll(".code-block").forEach(node => { const value = node.querySelector("[data-copy-code]")?.dataset.copyCode; if (value) node.outerHTML = commandPanel(value); });
     document.querySelectorAll('#note-detail-panel .detail-actions [data-action="toggle-note-favorite"]').forEach(node => node.remove());
     document.querySelectorAll(".steps li").forEach(node => { const text = node.textContent.replace(/^\s*\d+[.)\s-]+/, ""); node.innerHTML = `<label><input type="checkbox" /> <span>${esc(text)}</span></label>`; });
@@ -565,6 +582,7 @@
     decorateNoteTags();
     decorateTopicColorPicker();
     decorateRichEditors();
+    decorateCloudinaryButtons();
     restoreFormDraft();
     if (state.editor) document.querySelector('main').insertAdjacentHTML('beforeend', settingsEditor());
   }
@@ -826,6 +844,8 @@
     if (richTool?.tagName === "BUTTON") { runRichCommand(richTool.dataset.richEditor, richTool.dataset.richCommand, richTool.dataset.richValue || null); return; }
     const actionTarget = event.target.closest("[data-action]");
     const action = actionTarget?.dataset.action;
+    if (action === "open-cloudinary") { event.preventDefault(); if (document.querySelector("#case-form, #note-form")) captureFormDraft(); state.cloudinaryOpen = true; render(); return; }
+    if (action === "close-cloudinary" || event.target.classList.contains("cloudinary-modal")) { if (document.querySelector("#case-form, #note-form")) captureFormDraft(); state.cloudinaryOpen = false; render(); return; }
     if (action === "embed-reference") {
       const url = safeReference(actionTarget.dataset.url); if (!url) return;
       const frame = document.createElement('iframe'); frame.src = url; frame.title = "Trang web tham khảo"; frame.referrerPolicy = "no-referrer"; frame.setAttribute('sandbox','allow-scripts allow-same-origin allow-forms allow-popups'); frame.loading = "lazy";
@@ -854,7 +874,7 @@
     const related = event.target.closest('[data-open-related]');
     if (related) { const id = related.dataset.openRelated; if (state.cases.some(item => item.id === id)) openCaseDetail(id); else openNoteDetail(id); return; }
     if (action === "apply-template") { const id = document.getElementById('case-template').value; const template = availableTemplates().find(item => item.id === id); if (!template) return; if (Object.keys(template.fields).some(key => formFieldValue(key)) && !confirm('Thay nội dung các trường bằng mẫu đã chọn?')) return; setFormFieldValue('category', template.category); for (const [key,value] of Object.entries(template.fields)) setFormFieldValue(key, value); return; }
-    if (action === "manage-links") { const editor = document.querySelector('.link-editor'); if (editor) { editor.hidden = false; document.getElementById('related-search')?.focus(); } return; }
+    if (action === "manage-links") { const editor = document.querySelector('.link-editor'); if (editor) { editor.hidden = false; filterRelatedOptions(""); document.getElementById('related-search')?.focus(); } return; }
     if (action === "save-links" || action === "verify-item") {
       const isCase = Boolean(document.getElementById('case-detail-panel')); const item = isCase ? getCase() : getNote(); if (!item) return;
       if(action === "save-links") item.linkedIds = validLinkedIds({linkedIds:[...document.querySelectorAll('[data-link-id]:checked')].map(node => node.dataset.linkId)}, activeRelatedEntries(item));
@@ -929,11 +949,7 @@
     if (event.target.id === "case-search" || event.target.id === "global-search") { state.search = event.target.value; const id = event.target.id; render(); focusSearch(id); }
     if (event.target.id === "note-search") { state.noteSearch = event.target.value; render(); focusSearch("note-search"); }
     if (event.target.id === "related-search") {
-      const term = normalizeSearch(event.target.value.trim());
-      document.querySelectorAll("[data-related-option]").forEach(option => {
-        const selected = option.querySelector("[data-link-id]")?.checked;
-        option.hidden = term ? !option.dataset.search.includes(term) : !selected;
-      });
+      filterRelatedOptions(event.target.value);
     }
   });
   document.addEventListener("mousedown", (event) => {
@@ -946,6 +962,7 @@
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.lightbox) { state.lightbox = null; render(); return; }
+    if (event.key === "Escape" && state.cloudinaryOpen) { state.cloudinaryOpen = false; render(); return; }
     const actionTarget = event.target.closest("[data-action]");
     if ((event.key === "Enter" || event.key === " ") && actionTarget && ["toggle-case-favorite", "toggle-note-favorite", "open-image", "close-image"].includes(actionTarget.dataset.action)) { event.preventDefault(); actionTarget.click(); return; }
     if (event.target.closest(".tag-input")) parseTagsInput(event);
@@ -954,6 +971,7 @@
   });
   document.addEventListener("change", (event) => {
     if (event.target.matches("[data-rich-command]")) { runRichCommand(event.target.dataset.richEditor, event.target.dataset.richCommand, event.target.value || null); event.target.value = ""; return; }
+    if (event.target.matches("[data-link-id]")) { filterRelatedOptions(document.getElementById("related-search")?.value || ""); return; }
     if (event.target.dataset.sortKey) {state.sortOrders[event.target.dataset.sortKey] = event.target.value; save(); render(); return;}
     if (event.target.dataset.filter === "category") { state.category = event.target.value === "Tất cả danh mục" ? "Tất cả" : event.target.value; render(); }
     if (event.target.dataset.filter === "status") { state.status = event.target.value === "Tất cả trạng thái" ? "Tất cả" : event.target.value; render(); }
