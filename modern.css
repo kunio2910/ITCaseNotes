@@ -241,3 +241,19 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
   .nav-button { font-size: 10px; }
   .page-heading h1 { font-size: 29px; }
 }
+
+.attachment { position: relative; }
+.attachment-remove { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid #ffffffcc; border-radius: 8px; color: #8f2945; background: #fff8fae8; box-shadow: 0 2px 7px #252a4320; }
+.attachment-remove:hover { color: #ffffff; background: #b93557; }
+.cloudinary-button { color: #4050a5; border-color: #c8c4f5; background: #f1efff; text-decoration: none; white-space: nowrap; }
+.cloudinary-button:hover { color: #30268b; background: #e4e0ff; }
+.trash-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.trash-row { align-items: center; }
+[data-theme="dark"] .attachment-remove { color: #ffd7e2; background: #422638; border-color: #6a4760; }
+[data-theme="dark"] .cloudinary-button { color: #e4e0ff; border-color: #655da0; background: #302d59; }
+@media(max-width:560px) {
+  .trash-row { align-items: flex-start; flex-direction: column; }
+  .trash-actions { width: 100%; justify-content: flex-start; }
+  .trash-actions .button { flex: 1; }
+  .attachment-url-row .cloudinary-button { width: 100%; }
+}

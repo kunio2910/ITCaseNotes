@@ -89,11 +89,11 @@
     categories: stored?.categories?.length ? stored.categories : defaultCategories,
     view: "cases", selectedId: stored?.cases?.find((item) => !item.deleted)?.id || seedCases[0].id, editingId: null, search: "", category: "Tất cả", status: "Tất cả", time: "Mới nhất",
     noteSelectedId: stored?.notes?.find((item) => !item.deleted)?.id || seedNotes[0].id, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả",
-    theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], lightbox: null,
-    categoryIcons: stored?.categoryIcons || {}, customTemplates: stored?.customTemplates ?? null, sortOrders: stored?.sortOrders || {}, editor: null
+    theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], pendingAttachmentsReady: false, lightbox: null,
+    categoryIcons: stored?.categoryIcons || {}, customTemplates: stored?.customTemplates ?? null, sortOrders: stored?.sortOrders || {}, purgedIds: new Set(stored?.purgedIds || []), formDraft: null, editor: null
   };
 
-  const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases: state.cases, notes: state.notes, categories: state.categories, theme: state.theme, pageSize: state.pageSize, categoryIcons:state.categoryIcons, customTemplates:state.customTemplates, sortOrders:state.sortOrders }));
+  const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases: state.cases, notes: state.notes, categories: state.categories, theme: state.theme, pageSize: state.pageSize, categoryIcons:state.categoryIcons, customTemplates:state.customTemplates, sortOrders:state.sortOrders, purgedIds:[...state.purgedIds] }));
   async function cloudRequest(payload) {
     if (!APPS_SCRIPT_URL) return null;
     // Keep extended fields in a versioned envelope supported by the existing Sheet schema.
@@ -138,8 +138,8 @@
       const remote = result?.data || {};
       const hasRemoteData = Boolean(remote.cases?.length || remote.notes?.length || remote.categories?.length);
       if (hasRemoteData) {
-        state.cases = Array.isArray(remote.cases) ? remote.cases.map(decodeExtendedItem) : [];
-        state.notes = Array.isArray(remote.notes) ? remote.notes.map(decodeExtendedItem) : [];
+        state.cases = Array.isArray(remote.cases) ? remote.cases.map(decodeExtendedItem).filter(item => !state.purgedIds.has(item.id)) : [];
+        state.notes = Array.isArray(remote.notes) ? remote.notes.map(decodeExtendedItem).filter(item => !state.purgedIds.has(item.id)) : [];
         const configuration = state.notes.find(item => item.id === "itcn-settings-v1")?.configuration;
         if (configuration) { state.categoryIcons = configuration.categoryIcons || {}; state.customTemplates = configuration.templates ?? null; }
         state.notes = state.notes.filter(item => item.id !== "itcn-settings-v1");
@@ -217,7 +217,7 @@
   function caseCard(item) {
     return `<button class="case-card ${state.selectedId === item.id ? "selected" : ""}" data-select-case="${item.id}">
       <div class="case-card-title">${icon(item.category === "Máy in" ? "printer" : "windows", 17)}<span>${esc(item.title)}</span><span class="star favorite-toggle ${item.favorite ? "" : "off"}" role="button" tabindex="0" aria-label="${item.favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}" data-action="toggle-case-favorite" data-id="${item.id}">${icon("star", 15)}</span></div>
-      <p class="case-card-summary">${esc(item.symptoms.split("\n")[0])}</p>
+      ${item.symptoms?.trim() ? `<p class="case-card-summary">${esc(item.symptoms.split("\n")[0])}</p>` : ""}
       <div class="case-card-meta">${tags(item.tags.slice(0, 4))}<span>${formatDate(item.updatedAt)}</span></div>
     </button>`;
   }
@@ -230,22 +230,24 @@
     return file?.src || file?.url || "";
   }
 
-  function attachmentsMarkup(files = [], className = "attachments") {
+  function attachmentsMarkup(files = [], className = "attachments", editable = false) {
     if (!files.length) return "";
     return `<div class="${className}">${files.map((file) => {
       const source = attachmentSource(file);
       const isImage = Boolean(source) && (file.type?.startsWith("image/") || /\.(avif|gif|jpe?g|png|svg|webp)([?#].*)?$/i.test(source) || source.startsWith("data:image/"));
       const alt = file.name || "Ảnh đính kèm";
-      return `<div class="attachment ${isImage ? "attachment-image" : ""}" ${isImage ? `role="button" tabindex="0" aria-label="Phóng to ${esc(alt)}" data-action="open-image" data-image-src="${esc(source)}" data-image-alt="${esc(alt)}"` : ""}>${isImage ? `<img src="${esc(source)}" alt="${esc(alt)}" loading="lazy" />` : `<span>${icon("image", 17)}${esc(alt)}</span>`}</div>`;
+      const previewAttrs = isImage ? `role="button" tabindex="0" aria-label="Phóng to ${esc(alt)}" data-action="open-image" data-image-src="${esc(source)}" data-image-alt="${esc(alt)}"` : "";
+      const removeButton = editable ? `<button type="button" class="attachment-remove" data-action="remove-attachment" data-attachment-index="${files.indexOf(file)}" aria-label="Xóa ${esc(alt)}">${icon("trash", 13)}</button>` : "";
+      return `<div class="attachment ${isImage ? "attachment-image" : ""}" ${previewAttrs}>${isImage ? `<img src="${esc(source)}" alt="${esc(alt)}" loading="lazy" />` : `<span>${icon("image", 17)}${esc(alt)}</span>`}${removeButton}</div>`;
     }).join("")}</div>`;
   }
 
   function attachmentEditor(itemAttachments = [], inputId = "attachment-input", urlInputId = "attachment-url", urlAction = "add-case-attachment-url") {
-    const files = state.pendingAttachments.length ? state.pendingAttachments : itemAttachments;
+    const files = state.pendingAttachmentsReady ? state.pendingAttachments : itemAttachments;
     return `<section class="form-section attachment-section"><h3>${icon("image", 16)} Hình ảnh / Tệp đính kèm</h3>
       <label class="dropzone" for="${inputId}">${icon("upload", 24)}<span><strong>Kéo thả file vào đây</strong><small>hoặc chọn file (PNG, JPG, PDF...)</small></span><input id="${inputId}" type="file" multiple accept="image/*,.pdf,.txt,.log" /></label>
-      <div class="attachment-url-field"><label for="${urlInputId}">URL hình ảnh</label><div class="attachment-url-row"><input id="${urlInputId}" type="url" placeholder="https://example.com/image.png" /><button type="button" class="button small" data-action="${urlAction}">${icon("plus", 13)} Thêm ảnh</button></div><p class="field-help">Ảnh từ URL cần cho phép truy cập trực tiếp.</p></div>
-      ${attachmentsMarkup(files, "pending-files")}</section>`;
+      <div class="attachment-url-field"><label for="${urlInputId}">URL hình ảnh</label><div class="attachment-url-row"><input id="${urlInputId}" type="url" placeholder="https://example.com/image.png" /><button type="button" class="button small" data-action="${urlAction}">${icon("plus", 13)} Thêm ảnh</button><a class="button small cloudinary-button" href="https://console.cloudinary.com/console/media_library" target="_blank" rel="noopener noreferrer">${icon("upload", 13)} Cloudinary</a></div><p class="field-help">Có thể mở Cloudinary để tải ảnh lên, sau đó dán Secure URL vào đây.</p></div>
+      ${attachmentsMarkup(files, "pending-files", true)}</section>`;
   }
 
   function formExistingAttachments() {
@@ -259,10 +261,10 @@
       <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 21)}</span><div><h2>${esc(item.title)}</h2>${tags(item.tags)}</div></div>
         <div class="detail-actions"><button class="button small" data-action="edit-case">${icon("edit", 14)} Chỉnh sửa</button><button class="button small" data-action="duplicate-case">${icon("copy", 14)} Nhân bản</button><button class="button small danger" data-action="delete-case">${icon("trash", 14)} Xóa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Thiết bị / Phần mềm</label><strong>${esc(item.device || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Hệ điều hành</label><strong>${esc(item.os || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Trạng thái</label><strong>${esc(item.status)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
-      ${detailSection("symptom", "Triệu chứng", `<p>${esc(item.symptoms || "Chưa ghi nhận")}</p>`, "alert")}
-      ${detailSection("cause", "Nguyên nhân", `<p>${esc(item.cause || "Chưa xác minh")}</p>`, "help")}
-      ${detailSection("resolution", "Các bước xử lý", `<ol class="steps">${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>${item.commands ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check")}
-      ${detailSection("result", "Kết quả / Ghi chú", `<p>${esc(item.result || "Chưa cập nhật")}</p>${attachmentsMarkup(item.attachments || [])}`, "info")}
+      ${item.symptoms?.trim() ? detailSection("symptom", "Triệu chứng", `<p>${esc(item.symptoms)}</p>`, "alert") : ""}
+      ${item.cause?.trim() ? detailSection("cause", "Nguyên nhân", `<p>${esc(item.cause)}</p>`, "help") : ""}
+      ${steps.length || item.commands?.trim() ? detailSection("resolution", "Các bước xử lý", `${steps.length ? `<ol class="steps">${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>` : ""}${item.commands?.trim() ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check") : ""}
+      ${item.result?.trim() || item.attachments?.length ? detailSection("result", "Kết quả / Ghi chú", `${item.result?.trim() ? `<p>${esc(item.result)}</p>` : ""}${attachmentsMarkup(item.attachments || [])}`, "info") : ""}
     </article>`;
   }
 
@@ -297,7 +299,7 @@
   function noteCard(item) {
     return `<button class="case-card note-card ${state.noteSelectedId === item.id ? "selected" : ""}" data-select-note="${item.id}">
       <div class="case-card-title">${icon("book", 17)}<span>${esc(item.title)}</span><span class="star favorite-toggle ${item.favorite ? "" : "off"}" role="button" tabindex="0" aria-label="${item.favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}" data-action="toggle-note-favorite" data-id="${item.id}">${icon("star", 15)}</span></div>
-      <p class="case-card-summary"><strong>${esc(item.noteName)}</strong> · ${esc(item.content)}</p>
+      ${(item.noteName?.trim() || item.content?.trim()) ? `<p class="case-card-summary">${item.noteName?.trim() ? `<strong>${esc(item.noteName)}</strong>` : ""}${item.noteName?.trim() && item.content?.trim() ? " · " : ""}${item.content?.trim() ? esc(item.content) : ""}</p>` : ""}
       <div class="case-card-meta">${tags([item.category])}<span>${formatDate(item.updatedAt)}</span></div>
     </button>`;
   }
@@ -308,9 +310,9 @@
       <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon("book", 21)}</span><div><h2>${esc(item.title)}</h2>${tags([item.category, item.noteName])}</div></div>
         <div class="detail-actions"><button class="button small ${item.favorite ? "favorite-active" : ""}" data-action="toggle-note-favorite" data-id="${item.id}">${icon("star", 14)} ${item.favorite ? "Bỏ yêu thích" : "Yêu thích"}</button><button class="button small" data-action="edit-note">${icon("edit", 14)} Chỉnh sửa</button><button class="button small" data-action="duplicate-note">${icon("copy", 14)} Nhân bản</button><button class="button small danger" data-action="delete-note">${icon("trash", 14)} Xóa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Danh mục</label><strong>${esc(item.category)}</strong></div><div class="info-item"><label>Tên ghi chú</label><strong>${esc(item.noteName)}</strong></div><div class="info-item"><label>Tạo ngày</label><strong>${formatDate(item.createdAt)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
-      ${detailSection("note-section note-content-panel", "Nội dung ghi chú", `<p>${esc(item.content || "Chưa cập nhật")}</p>`, "book")}
+      ${item.content?.trim() ? detailSection("note-section note-content-panel", "Nội dung ghi chú", `<p>${esc(item.content)}</p>`, "book") : ""}
       ${item.commands ? detailSection("note-section note-command-section", "Lệnh CMD / PowerShell", `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>`, "command") : ""}
-      ${detailSection("note-section note-result-panel", "Kết quả và ghi chú", `<p>${esc(item.result || "Chưa cập nhật")}</p>${attachmentsMarkup(item.attachments || [], "note-attachments")}`, "info")}
+      ${item.result?.trim() || item.attachments?.length ? detailSection("note-section note-result-panel", "Kết quả và ghi chú", `${item.result?.trim() ? `<p>${esc(item.result)}</p>` : ""}${attachmentsMarkup(item.attachments || [], "note-attachments")}`, "info") : ""}
     </article>`;
   }
 
@@ -334,7 +336,7 @@
   function noteFormPage() {
     const item = getNote(state.noteEditingId) || { title: "", category: state.categories[0], noteName: "", content: "", commands: "", result: "", attachments: [] };
     const isEdit = Boolean(state.noteEditingId);
-    return `<div class="page note-form-page">${topHeading(isEdit ? "Chỉnh sửa ghi chú" : "Thêm ghi chú", isEdit ? "Cập nhật nội dung ghi chú và lệnh cần nhớ" : "Lưu nhanh kiến thức hoặc lệnh hỗ trợ IT để tra cứu lại", `<button class="button" data-action="back-to-notes">${icon("back", 14)} Quay lại ghi chú</button>`)}<form id="note-form" class="panel form-panel note-form"><div class="form-layout"><div><section class="form-section"><h3>${icon("book", 16)} Thông tin ghi chú</h3><div class="form-grid"><div class="field full"><label for="note-title">Tiêu đề <span class="required">*</span></label><input id="note-title" required value="${esc(item.title)}" placeholder="Ví dụ: Kiểm tra Print Spooler" /></div><div class="field"><label for="note-category">Danh mục</label><select id="note-category" class="select">${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="note-name">Tên ghi chú <span class="required">*</span></label><input id="note-name" required value="${esc(item.noteName)}" placeholder="Ví dụ: Print Spooler" /></div><div class="field full"><label for="note-content">Nội dung ghi chú <span class="required">*</span></label><textarea id="note-content" class="tall" required placeholder="Ghi nội dung cần nhớ...">${esc(item.content)}</textarea></div><div class="field full"><label for="note-commands">Lệnh CMD / PowerShell</label><textarea id="note-commands" placeholder="Có thể sao chép trực tiếp khi cần...">${esc(item.commands || "")}</textarea></div><div class="field full"><label for="note-result">Kết quả và ghi chú</label><textarea id="note-result" placeholder="Kết quả, lưu ý hoặc điều kiện áp dụng...">${esc(item.result || "")}</textarea></div></div></section></div><aside class="form-side">${attachmentEditor(item.attachments || [], "note-attachment-input", "note-attachment-url", "add-note-attachment-url")}</aside></div><div class="form-footer"><button type="button" class="button" data-action="back-to-notes">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu ghi chú"}</button></div></form></div>`;
+    return `<div class="page note-form-page">${topHeading(isEdit ? "Chỉnh sửa ghi chú" : "Thêm ghi chú", isEdit ? "Cập nhật nội dung ghi chú và lệnh cần nhớ" : "Lưu nhanh kiến thức hoặc lệnh hỗ trợ IT để tra cứu lại", `<button class="button" data-action="back-to-notes">${icon("back", 14)} Quay lại ghi chú</button>`)}<form id="note-form" class="panel form-panel note-form"><div class="form-layout"><div><section class="form-section"><h3>${icon("book", 16)} Thông tin ghi chú</h3><div class="form-grid"><div class="field full"><label for="note-title">Tiêu đề <span class="required">*</span></label><input id="note-title" required value="${esc(item.title)}" placeholder="Ví dụ: Kiểm tra Print Spooler" /></div><div class="field"><label for="note-category">Danh mục</label><select id="note-category" class="select">${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="note-name">Tên ghi chú <span class="required">*</span></label><input id="note-name" required value="${esc(item.noteName)}" placeholder="Ví dụ: Print Spooler" /></div><div class="field full"><label for="note-content">Nội dung ghi chú <span class="optional">(tùy chọn)</span></label><textarea id="note-content" class="tall" placeholder="Ghi nội dung cần nhớ nếu có...">${esc(item.content)}</textarea></div><div class="field full"><label for="note-commands">Lệnh CMD / PowerShell</label><textarea id="note-commands" placeholder="Có thể sao chép trực tiếp khi cần...">${esc(item.commands || "")}</textarea></div><div class="field full"><label for="note-result">Kết quả và ghi chú</label><textarea id="note-result" placeholder="Kết quả, lưu ý hoặc điều kiện áp dụng...">${esc(item.result || "")}</textarea></div></div></section></div><aside class="form-side">${attachmentEditor(item.attachments || [], "note-attachment-input", "note-attachment-url", "add-note-attachment-url")}</aside></div><div class="form-footer"><button type="button" class="button" data-action="back-to-notes">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu ghi chú"}</button></div></form></div>`;
   }
 
   function tagsEditor(values = []) {
@@ -344,12 +346,12 @@
   function formPage() {
     const item = getCase(state.editingId) || { title: "", category: state.categories[0], status: "Đang xác minh", device: "", os: "", symptoms: "", cause: "", resolution: "", commands: "", result: "", tags: [], attachments: [] };
     const isEdit = Boolean(state.editingId);
-    return `<div class="page">${topHeading(isEdit ? "Chỉnh sửa case" : "Thêm case mới", isEdit ? "Cập nhật nguyên nhân, giải pháp hoặc ghi chú cho case" : "Ghi lại sự cố và các bước xử lý để dùng lại sau này", `<button class="button" data-action="cancel-form">${icon("back", 14)} Quay lại</button>`)}<form id="case-form" class="panel form-panel"><div class="form-layout"><div><section class="form-section"><h3>${icon("info", 16)} Thông tin case</h3><div class="form-grid"><div class="field full"><label for="title">Tiêu đề <span class="required">*</span></label><input id="title" required value="${esc(item.title)}" placeholder="Ví dụ: Không thể kết nối máy in qua USB" /></div><div class="field"><label for="category">Danh mục <span class="required">*</span></label><select id="category" class="select" required>${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="status">Trạng thái</label><select id="status" class="select"><option ${item.status === "Đang xác minh" ? "selected" : ""}>Đang xác minh</option><option ${item.status === "Đã xử lý" ? "selected" : ""}>Đã xử lý</option></select></div><div class="field"><label for="device">Thiết bị / Phần mềm</label><input id="device" value="${esc(item.device)}" placeholder="HP M211dw, Outlook..." /></div><div class="field"><label for="os">Hệ điều hành</label><input id="os" value="${esc(item.os)}" placeholder="Windows 11 25H2" /></div><div class="field full"><label for="symptoms">Triệu chứng <span class="required">*</span></label><textarea id="symptoms" required placeholder="Mô tả dấu hiệu, thông báo lỗi...">${esc(item.symptoms)}</textarea></div><div class="field full"><label for="cause">Nguyên nhân</label><textarea id="cause" placeholder="Có thể ghi nguyên nhân chưa xác minh để cập nhật sau...">${esc(item.cause)}</textarea></div></div></section><section class="form-section"><h3>${icon("check", 16)} Cách xử lý <span class="required">*</span></h3><div class="field"><label for="resolution">Các bước xử lý (mỗi dòng là một bước)</label><textarea id="resolution" class="tall" required placeholder="1. Kiểm tra...\n2. Cài lại...">${esc(item.resolution)}</textarea></div><div class="field" style="margin-top:13px"><label for="commands">Lệnh CMD / PowerShell</label><textarea id="commands" placeholder="Có thể sao chép trực tiếp khi xử lý...">${esc(item.commands || "")}</textarea></div></section><section class="form-section"><h3>${icon("info", 16)} Kết quả và ghi chú</h3><div class="field"><label for="result">Kết quả / Ghi chú</label><textarea id="result" placeholder="Kết quả sau khi xử lý, lưu ý cho lần sau...">${esc(item.result || "")}</textarea></div></section></div><aside class="form-side"><section class="form-section"><h3>${icon("folder", 16)} Tag / Từ khóa</h3><div class="field">${tagsEditor(item.tags || [])}<p class="field-help">Tag giúp tìm kiếm case nhanh hơn.</p></div></section>${attachmentEditor(item.attachments || [])}</aside></div><div class="form-footer"><button type="button" class="button" data-action="cancel-form">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu case"}</button></div></form></div>`;
+    return `<div class="page">${topHeading(isEdit ? "Chỉnh sửa case" : "Thêm case mới", isEdit ? "Cập nhật nguyên nhân, giải pháp hoặc ghi chú cho case" : "Ghi lại sự cố và các bước xử lý để dùng lại sau này", `<button class="button" data-action="cancel-form">${icon("back", 14)} Quay lại</button>`)}<form id="case-form" class="panel form-panel"><div class="form-layout"><div><section class="form-section"><h3>${icon("info", 16)} Thông tin case</h3><div class="form-grid"><div class="field full"><label for="title">Tiêu đề <span class="required">*</span></label><input id="title" required value="${esc(item.title)}" placeholder="Ví dụ: Không thể kết nối máy in qua USB" /></div><div class="field"><label for="category">Danh mục <span class="required">*</span></label><select id="category" class="select" required>${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="status">Trạng thái</label><select id="status" class="select"><option ${item.status === "Đang xác minh" ? "selected" : ""}>Đang xác minh</option><option ${item.status === "Đã xử lý" ? "selected" : ""}>Đã xử lý</option></select></div><div class="field"><label for="device">Thiết bị / Phần mềm</label><input id="device" value="${esc(item.device)}" placeholder="HP M211dw, Outlook..." /></div><div class="field"><label for="os">Hệ điều hành</label><input id="os" value="${esc(item.os)}" placeholder="Windows 11 25H2" /></div><div class="field full"><label for="symptoms">Triệu chứng <span class="optional">(tùy chọn)</span></label><textarea id="symptoms" placeholder="Mô tả dấu hiệu, thông báo lỗi nếu có...">${esc(item.symptoms)}</textarea></div><div class="field full"><label for="cause">Nguyên nhân</label><textarea id="cause" placeholder="Có thể ghi nguyên nhân chưa xác minh để cập nhật sau...">${esc(item.cause)}</textarea></div></div></section><section class="form-section"><h3>${icon("check", 16)} Cách xử lý <span class="optional">(tùy chọn)</span></h3><div class="field"><label for="resolution">Các bước xử lý (mỗi dòng là một bước)</label><textarea id="resolution" class="tall" placeholder="1. Kiểm tra...\n2. Cài lại...">${esc(item.resolution)}</textarea></div><div class="field" style="margin-top:13px"><label for="commands">Lệnh CMD / PowerShell</label><textarea id="commands" placeholder="Có thể sao chép trực tiếp khi xử lý...">${esc(item.commands || "")}</textarea></div></section><section class="form-section"><h3>${icon("info", 16)} Kết quả và ghi chú</h3><div class="field"><label for="result">Kết quả / Ghi chú</label><textarea id="result" placeholder="Kết quả sau khi xử lý, lưu ý cho lần sau...">${esc(item.result || "")}</textarea></div></section></div><aside class="form-side"><section class="form-section"><h3>${icon("folder", 16)} Tag / Từ khóa</h3><div class="field">${tagsEditor(item.tags || [])}<p class="field-help">Tag giúp tìm kiếm case nhanh hơn.</p></div></section>${attachmentEditor(item.attachments || [])}</aside></div><div class="form-footer"><button type="button" class="button" data-action="cancel-form">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu case"}</button></div></form></div>`;
   }
 
   function searchPage() {
     const items = filteredCases();
-    return `<div class="page search-page">${topHeading("Tìm kiếm case", "Tìm toàn văn trên tiêu đề, triệu chứng, nguyên nhân, giải pháp, tag và mã lỗi")}<div class="search-hero"><label class="search-input">${icon("search", 18)}<input id="global-search" type="search" value="${esc(state.search)}" placeholder="Ví dụ: Unspecified, Print Spooler, HP M211dw..." /></label><button class="button primary" data-action="search">${icon("search", 15)} Tìm kiếm</button></div><div class="result-count" style="padding-left:0"><span>${items.length} kết quả</span><span>Không cần bấm Enter, kết quả cập nhật tức thời</span></div><div class="search-results">${items.length ? items.map((item) => `<article class="search-result" data-select-case="${item.id}"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 19)}</span><div><h3>${esc(item.title)}</h3><p>${esc(item.symptoms.split("\n")[0])}</p>${tags(item.tags)}</div><small class="subtle">${formatDate(item.updatedAt)}</small></article>`).join("") : `<div class="panel empty"><div><div class="empty-icon">${icon("search", 24)}</div><h3>Chưa có kết quả phù hợp</h3><p>Thử tên thiết bị, mã lỗi hoặc một từ khóa trong cách xử lý.</p></div></div>`}</div></div>`;
+    return `<div class="page search-page">${topHeading("Tìm kiếm case", "Tìm toàn văn trên tiêu đề, triệu chứng, nguyên nhân, giải pháp, tag và mã lỗi")}<div class="search-hero"><label class="search-input">${icon("search", 18)}<input id="global-search" type="search" value="${esc(state.search)}" placeholder="Ví dụ: Unspecified, Print Spooler, HP M211dw..." /></label><button class="button primary" data-action="search">${icon("search", 15)} Tìm kiếm</button></div><div class="result-count" style="padding-left:0"><span>${items.length} kết quả</span><span>Không cần bấm Enter, kết quả cập nhật tức thời</span></div><div class="search-results">${items.length ? items.map((item) => `<article class="search-result" data-select-case="${item.id}"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 19)}</span><div><h3>${esc(item.title)}</h3>${item.symptoms?.trim() ? `<p>${esc(item.symptoms.split("\n")[0])}</p>` : ""}${tags(item.tags)}</div><small class="subtle">${formatDate(item.updatedAt)}</small></article>`).join("") : `<div class="panel empty"><div><div class="empty-icon">${icon("search", 24)}</div><h3>Chưa có kết quả phù hợp</h3><p>Thử tên thiết bị, mã lỗi hoặc một từ khóa trong cách xử lý.</p></div></div>`}</div></div>`;
   }
 
   function categoriesPage() {
@@ -359,12 +361,12 @@
   function settingsPage() {
     const deletedCases = state.cases.filter((item) => item.deleted);
     const deletedNotes = state.notes.filter((item) => item.deleted);
-    const deleted = [...deletedCases.map((item) => `<div class="trash-row"><div><strong>${esc(item.title)}</strong><small>Case · Xóa lần cuối: ${formatDate(item.updatedAt)}</small></div><button class="button small" data-restore-case="${item.id}">${icon("refresh", 13)} Khôi phục</button></div>`), ...deletedNotes.map((item) => `<div class="trash-row"><div><strong>${esc(item.title)}</strong><small>Ghi chú · Xóa lần cuối: ${formatDate(item.updatedAt)}</small></div><button class="button small" data-restore-note="${item.id}">${icon("refresh", 13)} Khôi phục</button></div>`)].join("");
+    const deleted = [...deletedCases.map((item) => `<div class="trash-row"><div><strong>${esc(item.title)}</strong><small>Case · Xóa lần cuối: ${formatDate(item.updatedAt)}</small></div><div class="trash-actions"><button class="button small" data-restore-case="${item.id}">${icon("refresh", 13)} Khôi phục</button><button class="button small danger" data-delete-trash-case="${item.id}">${icon("trash", 13)} Xóa vĩnh viễn</button></div></div>`), ...deletedNotes.map((item) => `<div class="trash-row"><div><strong>${esc(item.title)}</strong><small>${item.kind === "knowledge" ? "Kiến thức" : "Ghi chú"} · Xóa lần cuối: ${formatDate(item.updatedAt)}</small></div><div class="trash-actions"><button class="button small" data-restore-note="${item.id}">${icon("refresh", 13)} Khôi phục</button><button class="button small danger" data-delete-trash-note="${item.id}">${icon("trash", 13)} Xóa vĩnh viễn</button></div></div>`)].join("");
     const deletedCount = deletedCases.length + deletedNotes.length;
     return `<div class="page">${topHeading("Cài đặt & Sao lưu", "Bảo vệ dữ liệu cục bộ và điều chỉnh cách hiển thị sổ tay")}
       <div class="settings-grid"><section class="settings-card"><h3>${icon("archive", 18)} Sao lưu dữ liệu</h3><p>Xuất toàn bộ case, danh mục, tag và ảnh đính kèm thành một file JSON để lưu trữ hoặc chuyển sang máy khác.</p><button class="button primary" data-action="export">${icon("download", 15)} Xuất bản sao</button><div class="setting-row"><span>Khôi phục dữ liệu</span><button class="button small" data-action="import">${icon("upload", 13)} Chọn file khôi phục</button></div><input id="settings-import" class="sr-only" type="file" accept="application/json,.json" /></section>
       <section class="settings-card"><h3>${icon("palette", 18)} Giao diện</h3><p>Tùy chỉnh giao diện và số lượng case hiển thị trong danh sách.</p><div class="setting-row"><span>Chế độ màu</span><select class="select" style="width:130px" data-setting="theme"><option value="light" ${state.theme === "light" ? "selected" : ""}>Sáng (Light)</option><option value="dark" ${state.theme === "dark" ? "selected" : ""}>Tối (Dark)</option></select></div><div class="setting-row"><span>Số case hiển thị</span><select class="select" style="width:130px" data-setting="pageSize"><option ${state.pageSize === "20" ? "selected" : ""}>20 case / trang</option><option ${state.pageSize === "50" ? "selected" : ""}>50 case / trang</option></select></div></section>
-      <section class="settings-card" style="grid-column:1/-1"><h3>${icon("trash", 18)} Thùng rác ${deletedCount ? `<span class="tag red">${deletedCount}</span>` : ""}</h3><p>Case và ghi chú đã xóa mềm được giữ lại để khôi phục khi cần.</p>${deletedCount ? `<div class="trash-list">${deleted}</div>` : `<span class="subtle">Thùng rác đang trống.</span>`}</section></div></div>`;
+      <section class="settings-card" style="grid-column:1/-1"><div class="setup-heading"><h3>${icon("trash", 18)} Thùng rác ${deletedCount ? `<span class="tag red">${deletedCount}</span>` : ""}</h3>${deletedCount ? `<button class="button small danger" data-action="empty-trash">${icon("trash", 13)} Xóa nhanh tất cả</button>` : ""}</div><p>Case và ghi chú đã xóa mềm được giữ lại để khôi phục khi cần.</p>${deletedCount ? `<div class="trash-list">${deleted}</div>` : `<span class="subtle">Thùng rác đang trống.</span>`}</section></div></div>`;
   }
 
   function normalizeSearch(value) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase(); }
@@ -455,6 +457,7 @@
     document.querySelectorAll(".steps li").forEach(node => { const text = node.textContent.replace(/^\s*\d+[.)\s-]+/, ""); node.innerHTML = `<label><input type="checkbox" /> <span>${esc(text)}</span></label>`; });
     decorateWorkspace();
     decorateNewFeatures();
+    restoreFormDraft();
     if (state.editor) document.querySelector('main').insertAdjacentHTML('beforeend', settingsEditor());
   }
   function decorateWorkspace() {
@@ -477,7 +480,7 @@
       const item = detail.id === "case-detail-panel" ? getCase() : getNote();
       const url = safeReference(item?.referenceUrl);
       if (url && !detail.querySelector('.reference-panel')) {
-        const anchor = detail.querySelector('.note-content-panel') || detail.querySelector('.detail-section.result');
+        const anchor = detail.querySelector('.note-content-panel') || detail.querySelector('.detail-section.result') || detail.querySelector('.info-grid') || detail.querySelector('.detail-top');
         anchor?.insertAdjacentHTML('afterend', `<section class="reference-panel"><h3>Trang web tham khảo</h3><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)} · Mở tab mới</a><button class="button" data-action="embed-reference" data-url="${esc(url)}">Xem trang nhúng</button><p>Một số website chặn nhúng. Nếu khung trống hoặc báo lỗi, hãy dùng Mở tab mới.</p><div id="reference-frame"></div></section>`);
       }
       detail.insertAdjacentHTML('beforeend', relatedMarkup(item));
@@ -492,54 +495,68 @@
   function focusSearch(id = "case-search") { const input = document.getElementById(id); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } }
   function formData() {
     const field = (id) => document.getElementById(id)?.value?.trim() || "";
-    return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), referenceUrl: field("reference-url"), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachments };
+    return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), referenceUrl: field("reference-url"), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
   }
   function saveForm(event) {
     event.preventDefault();
     const data = formData();
     if (data.referenceUrl && !safeReference(data.referenceUrl)) { toast("URL phải bắt đầu bằng http:// hoặc https://.", "error"); return; }
-    if (!data.title || !data.symptoms || !data.resolution) { toast("Vui lòng điền các trường bắt buộc.", "error"); return; }
+    if (!data.title || !data.category) { toast("Vui lòng điền tiêu đề và danh mục.", "error"); return; }
     const now = new Date().toISOString();
     if (state.editingId) {
       const index = state.cases.findIndex((item) => item.id === state.editingId);
-      state.cases[index] = { ...state.cases[index], ...data, attachments: data.attachments.length ? data.attachments : state.cases[index].attachments || [], updatedAt: now };
+      state.cases[index] = { ...state.cases[index], ...data, attachments: data.attachmentsTouched ? data.attachments : state.cases[index].attachments || [], updatedAt: now };
       state.selectedId = state.editingId; toast("Đã lưu thay đổi cho case.");
     } else {
       const item = { ...data, id: uid(), favorite: false, deleted: false, createdAt: now, updatedAt: now, attachments: data.attachments || [] };
       state.cases.unshift(item); state.selectedId = item.id; toast("Đã thêm case mới.");
     }
-    state.pendingAttachments = []; state.editingId = null; state.view = "cases"; save(); render();
+    state.pendingAttachments = []; state.pendingAttachmentsReady = false; state.editingId = null; state.view = "cases"; save(); render();
     syncItem("upsertCase", state.cases.find((item) => item.id === state.selectedId));
   }
   function noteFormData() {
     const field = (id) => document.getElementById(id)?.value?.trim() || "";
-    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), attachments: state.pendingAttachments };
+    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
+  }
+  function captureFormDraft() {
+    const ids = ["title", "category", "status", "device", "os", "symptoms", "cause", "resolution", "commands", "result", "reference-url", "note-title", "note-category", "note-name", "note-content", "note-commands", "note-result"];
+    state.formDraft = Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value ?? ""]).filter(([, value]) => value !== ""));
+  }
+  function restoreFormDraft() {
+    if (!state.formDraft) return;
+    for (const [id, value] of Object.entries(state.formDraft)) {
+      const field = document.getElementById(id);
+      if (field) field.value = value;
+    }
+    state.formDraft = null;
   }
   function saveNoteForm(event) {
     event.preventDefault();
     const data = noteFormData();
     if (data.referenceUrl && !safeReference(data.referenceUrl)) { toast("URL phải bắt đầu bằng http:// hoặc https://.", "error"); return; }
     data.kind = state.knowledgeMode ? "knowledge" : "note";
-    if (!data.title || !data.noteName || !data.content) { toast("Vui lòng điền tiêu đề, tên ghi chú và nội dung.", "error"); return; }
+    if (!data.title || !data.noteName) { toast("Vui lòng điền tiêu đề và tên ghi chú.", "error"); return; }
     const now = new Date().toISOString();
     if (state.noteEditingId) {
       const index = state.notes.findIndex((item) => item.id === state.noteEditingId);
-      state.notes[index] = { ...state.notes[index], ...data, attachments: data.attachments.length ? data.attachments : state.notes[index].attachments || [], updatedAt: now };
+      state.notes[index] = { ...state.notes[index], ...data, attachments: data.attachmentsTouched ? data.attachments : state.notes[index].attachments || [], updatedAt: now };
       state.noteSelectedId = state.noteEditingId; toast("Đã lưu thay đổi cho ghi chú.");
     } else {
       const item = { ...data, id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, favorite: false, createdAt: now, updatedAt: now, deleted: false, attachments: data.attachments || [] };
       state.notes.unshift(item); state.noteSelectedId = item.id; toast("Đã thêm ghi chú mới.");
     }
-    state.noteEditingId = null; state.view = "notes"; save(); render();
+    state.pendingAttachments = []; state.pendingAttachmentsReady = false; state.noteEditingId = null; state.view = "notes"; save(); render();
     syncItem("upsertNote", state.notes.find((item) => item.id === state.noteSelectedId));
   }
   function parseTagsInput(event) {
     const input = event.target; if (event.key !== "Enter") return; event.preventDefault(); const value = input.value.trim(); if (!value) return; const editor = input.closest(".tag-input"); if (editor.querySelector(`[data-remove-tag="${CSS.escape(value)}"]`)) return; const tag = document.createElement("span"); tag.className = "tag"; tag.innerHTML = `${esc(value)} <button type="button" data-remove-tag="${esc(value)}" aria-label="Xóa tag">×</button>`; editor.insertBefore(tag, input); input.value = "";
   }
   async function readAttachments(files) {
+    captureFormDraft();
     const selected = [...files].slice(0, 6);
-    const existing = state.pendingAttachments.length ? state.pendingAttachments : formExistingAttachments();
+    const existing = state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments();
     state.pendingAttachments = [...existing];
+    state.pendingAttachmentsReady = true;
     for (const file of selected) {
       const src = file.type.startsWith("image/") ? await new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsDataURL(file); }) : "";
       state.pendingAttachments.push({ name: file.name, src });
@@ -548,14 +565,16 @@
   }
 
   function addAttachmentUrl(inputId) {
+    captureFormDraft();
     const input = document.getElementById(inputId);
     const url = input?.value.trim() || "";
     if (!/^https?:\/\/[^\s]+$/i.test(url)) {
       toast("Vui lòng nhập URL hình ảnh hợp lệ.", "error");
       return;
     }
-    const existing = state.pendingAttachments.length ? state.pendingAttachments : formExistingAttachments();
+    const existing = state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments();
     const name = decodeURIComponent(url.split("/").pop()?.split("?")[0] || "Ảnh từ URL");
+    state.pendingAttachmentsReady = true;
     state.pendingAttachments = [...existing, { name, src: url, url, type: "image/url" }];
     render();
     toast("Đã thêm ảnh từ URL.");
@@ -565,7 +584,7 @@
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `it-case-notes-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url); toast("Đã xuất bản sao dữ liệu.");
   }
   function importData(file) {
-    const reader = new FileReader(); reader.onload = () => { try { const payload = JSON.parse(reader.result); if (!Array.isArray(payload.cases) || !Array.isArray(payload.categories)) throw new Error("invalid"); state.cases = payload.cases; state.notes = Array.isArray(payload.notes) ? payload.notes : []; state.categories = payload.categories; state.categoryIcons = payload.categoryIcons || {}; state.customTemplates = payload.customTemplates ?? null; state.selectedId = state.cases.find((item) => !item.deleted)?.id || null; state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null; save(); saveConfiguration(); render(); syncAllToCloud().then(() => toast("Đã khôi phục và đồng bộ dữ liệu lên Google Sheet.")).catch((error) => toast(`Đã khôi phục cục bộ nhưng đồng bộ thất bại: ${error.message}`, "error")); } catch { toast("File sao lưu không đúng định dạng IT Case Notes.", "error"); } }; reader.readAsText(file);
+    const reader = new FileReader(); reader.onload = () => { try { const payload = JSON.parse(reader.result); if (!Array.isArray(payload.cases) || !Array.isArray(payload.categories)) throw new Error("invalid"); state.cases = payload.cases; state.notes = Array.isArray(payload.notes) ? payload.notes : []; state.categories = payload.categories; state.categoryIcons = payload.categoryIcons || {}; state.customTemplates = payload.customTemplates ?? null; state.purgedIds = new Set(); state.selectedId = state.cases.find((item) => !item.deleted)?.id || null; state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null; save(); saveConfiguration(); render(); syncAllToCloud().then(() => toast("Đã khôi phục và đồng bộ dữ liệu lên Google Sheet.")).catch((error) => toast(`Đã khôi phục cục bộ nhưng đồng bộ thất bại: ${error.message}`, "error")); } catch { toast("File sao lưu không đúng định dạng IT Case Notes.", "error"); } }; reader.readAsText(file);
   }
 
   let caseSelectionTimer = null;
@@ -612,6 +631,32 @@
     state.noteSelectedId = activeNotes()[0]?.id || null; state.view = "notes"; save(); render(); syncItem("upsertNote", item); toast("Đã chuyển ghi chú vào thùng rác.");
   }
 
+  function permanentlyDeleteTrash(type, id) {
+    const collection = type === "case" ? state.cases : state.notes;
+    const item = collection.find(entry => entry.id === id && entry.deleted);
+    if (!item) return;
+    state.purgedIds.add(id);
+    syncItem(type === "case" ? "upsertCase" : "upsertNote", item);
+    if (type === "case") state.cases = state.cases.filter(entry => entry.id !== id);
+    else state.notes = state.notes.filter(entry => entry.id !== id);
+    if (state.selectedId === id) state.selectedId = activeCases()[0]?.id || null;
+    if (state.noteSelectedId === id) state.noteSelectedId = activeNotes()[0]?.id || null;
+    save(); render(); toast("Đã xóa vĩnh viễn khỏi thùng rác.");
+  }
+
+  function emptyTrash() {
+    const deletedCases = state.cases.filter(item => item.deleted);
+    const deletedNotes = state.notes.filter(item => item.deleted);
+    if (!deletedCases.length && !deletedNotes.length) return;
+    for (const item of deletedCases) { state.purgedIds.add(item.id); syncItem("upsertCase", item); }
+    for (const item of deletedNotes) { state.purgedIds.add(item.id); syncItem("upsertNote", item); }
+    state.cases = state.cases.filter(item => !item.deleted);
+    state.notes = state.notes.filter(item => !item.deleted);
+    state.selectedId = activeCases()[0]?.id || null;
+    state.noteSelectedId = activeNotes()[0]?.id || null;
+    save(); render(); toast(`Đã xóa ${deletedCases.length + deletedNotes.length} mục khỏi thùng rác.`);
+  }
+
   document.addEventListener("click", (event) => {
     const actionTarget = event.target.closest("[data-action]");
     const action = actionTarget?.dataset.action;
@@ -651,6 +696,14 @@
       item.updatedAt = new Date().toISOString(); save(); render(); syncItem(isCase ? 'upsertCase' : 'upsertNote', item); return;
     }
     if (action === "retry-sync") { for (const payload of pendingSync.values()) syncItem(payload.action, payload.item || {name: payload.name}); if (!pendingSync.size) hydrateFromCloud(); return; }
+    if (action === "empty-trash") { if (confirm("Xóa vĩnh viễn toàn bộ case và ghi chú trong thùng rác?")) emptyTrash(); return; }
+    if (action === "remove-attachment") {
+      event.preventDefault(); event.stopPropagation();
+      captureFormDraft();
+      const current = state.pendingAttachmentsReady ? [...state.pendingAttachments] : [...formExistingAttachments()];
+      current.splice(Number(actionTarget.dataset.attachmentIndex), 1);
+      state.pendingAttachments = current; state.pendingAttachmentsReady = true; render(); toast("Đã bỏ tệp đính kèm khỏi biểu mẫu."); return;
+    }
     if (event.target.classList.contains("image-lightbox") || action === "close-image") { state.lightbox = null; render(); return; }
     if (action === "open-image") { state.lightbox = { src: actionTarget.dataset.imageSrc, alt: actionTarget.dataset.imageAlt || "Ảnh đính kèm" }; render(); return; }
     if (action === "toggle-case-favorite" || action === "toggle-note-favorite") { event.preventDefault(); event.stopPropagation(); toggleFavorite(action === "toggle-note-favorite" ? "note" : "case", actionTarget.dataset.id); return; }
@@ -674,18 +727,18 @@
       render();
       return;
     }
-    if (action === "add-case") { state.view = "form"; state.editingId = null; state.pendingAttachments = []; render(); return; }
+    if (action === "add-case") { state.view = "form"; state.editingId = null; state.pendingAttachments = []; state.pendingAttachmentsReady = false; render(); return; }
     if (action === "add-case-attachment-url") { addAttachmentUrl("attachment-url"); return; }
     if (action === "add-note-attachment-url") { addAttachmentUrl("note-attachment-url"); return; }
-    if (action === "cancel-form") { state.view = "cases"; state.editingId = null; state.pendingAttachments = []; render(); return; }
+    if (action === "cancel-form") { state.view = "cases"; state.editingId = null; state.pendingAttachments = []; state.pendingAttachmentsReady = false; render(); return; }
     if (action === "back-to-cases") { state.view = "cases"; render(); return; }
-    if (action === "add-note") { state.view = "note-form"; state.noteEditingId = null; state.pendingAttachments = []; render(); return; }
-    if (action === "back-to-notes") { state.view = "notes"; state.noteEditingId = null; render(); return; }
-    if (action === "edit-note") { state.view = "note-form"; state.noteEditingId = state.noteSelectedId; state.pendingAttachments = []; render(); return; }
+    if (action === "add-note") { state.view = "note-form"; state.noteEditingId = null; state.pendingAttachments = []; state.pendingAttachmentsReady = false; render(); return; }
+    if (action === "back-to-notes") { state.view = "notes"; state.noteEditingId = null; state.pendingAttachments = []; state.pendingAttachmentsReady = false; render(); return; }
+    if (action === "edit-note") { state.view = "note-form"; state.noteEditingId = state.noteSelectedId; state.pendingAttachments = []; state.pendingAttachmentsReady = false; render(); return; }
     if (action === "duplicate-note") { duplicateNote(); return; }
     if (action === "delete-note") { deleteNote(); return; }
     if (action === "search-notes") { state.noteSearch = document.getElementById("note-search")?.value || state.noteSearch; state.view = "notes"; render(); return; }
-    if (action === "edit-case") { state.view = "form"; state.editingId = state.selectedId; state.pendingAttachments = []; render(); return; }
+    if (action === "edit-case") { state.view = "form"; state.editingId = state.selectedId; state.pendingAttachments = []; state.pendingAttachmentsReady = false; render(); return; }
     if (action === "duplicate-case") { const original = getCase(); if (!original) return; const now = new Date().toISOString(); const copy = { ...original, id: uid(), title: `${original.title} (Bản sao)`, favorite: false, deleted: false, createdAt: now, updatedAt: now }; state.cases.unshift(copy); state.selectedId = copy.id; save(); render(); syncItem("upsertCase", copy); toast("Đã nhân bản case."); return; }
     if (action === "delete-case") { const item = getCase(); if (!item) return; item.deleted = true; item.updatedAt = new Date().toISOString(); state.selectedId = activeCases()[0]?.id || null; save(); render(); syncItem("upsertCase", item); toast("Đã chuyển case vào thùng rác."); return; }
     if (action === "search") { state.search = document.getElementById("case-search")?.value || document.getElementById("global-search")?.value || state.search; state.view = state.view === "search" ? "search" : "cases"; render(); return; }
@@ -695,6 +748,8 @@
     if (event.target.closest("[data-copy-code]")) { navigator.clipboard?.writeText(event.target.closest("[data-copy-code]").dataset.copyCode); toast("Đã sao chép lệnh."); return; }
     const restore = event.target.closest("[data-restore-case]"); if (restore) { const item = getCase(restore.dataset.restoreCase); if (item) { item.deleted = false; item.updatedAt = new Date().toISOString(); save(); render(); syncItem("upsertCase", item); toast("Đã khôi phục case."); } return; }
     const restoreNote = event.target.closest("[data-restore-note]"); if (restoreNote) { const item = getNote(restoreNote.dataset.restoreNote); if (item) { item.deleted = false; item.updatedAt = new Date().toISOString(); save(); render(); syncItem("upsertNote", item); toast("Đã khôi phục ghi chú."); } return; }
+    const deleteTrashCase = event.target.closest("[data-delete-trash-case]"); if (deleteTrashCase) { if (confirm("Xóa vĩnh viễn case này?")) permanentlyDeleteTrash("case", deleteTrashCase.dataset.deleteTrashCase); return; }
+    const deleteTrashNote = event.target.closest("[data-delete-trash-note]"); if (deleteTrashNote) { if (confirm("Xóa vĩnh viễn ghi chú này?")) permanentlyDeleteTrash("note", deleteTrashNote.dataset.deleteTrashNote); return; }
     const editCategory = event.target.closest("[data-edit-category]"); if (editCategory) { const oldName = editCategory.dataset.editCategory; const next = window.prompt("Đổi tên danh mục:", oldName); if (next?.trim() && next.trim() !== oldName && !state.categories.includes(next.trim())) { const index = state.categories.indexOf(oldName); state.categories[index] = next.trim(); state.cases.forEach((item) => { if (item.category === oldName) item.category = next.trim(); }); save(); render(); syncItem("upsertCategory", { name: next.trim() }); state.cases.filter((item) => item.category === next.trim()).forEach((item) => syncItem("upsertCase", item)); toast("Đã cập nhật danh mục."); } return; }
     const removeTag = event.target.closest("[data-remove-tag]"); if (removeTag) { removeTag.closest(".tag")?.remove(); return; }
   });
