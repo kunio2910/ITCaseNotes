@@ -38,10 +38,10 @@
 
   const seedNotes = [
     {
-      id: "note-001", title: "Kiểm tra và khởi động lại Print Spooler", category: "Windows", noteName: "Print Spooler", content: "Ghi nhớ nhanh các bước kiểm tra khi máy in không nhận lệnh in hoặc bị treo hàng đợi.", commands: "Get-Service Spooler\nRestart-Service Spooler", result: "Dịch vụ chạy lại bình thường, có thể tiếp tục kiểm tra driver nếu lỗi còn tiếp diễn.", favorite: false, attachments: [], createdAt: "2026-10-21T08:30:00+07:00", updatedAt: "2026-10-22T09:15:00+07:00", deleted: false
+      id: "note-001", title: "Kiểm tra và khởi động lại Print Spooler", category: "Windows", noteName: "Print Spooler", content: "Ghi nhớ nhanh các bước kiểm tra khi máy in không nhận lệnh in hoặc bị treo hàng đợi.", commands: "Get-Service Spooler\nRestart-Service Spooler", result: "Dịch vụ chạy lại bình thường, có thể tiếp tục kiểm tra driver nếu lỗi còn tiếp diễn.", tags: ["Print Spooler", "Máy in"], favorite: false, attachments: [], createdAt: "2026-10-21T08:30:00+07:00", updatedAt: "2026-10-22T09:15:00+07:00", deleted: false
     },
     {
-      id: "note-002", title: "Làm sạch DNS trên máy người dùng", category: "Mạng / Internet", noteName: "DNS nhanh", content: "Dùng khi người dùng không truy cập được website hoặc dịch vụ nội bộ sau khi thay đổi mạng.", commands: "ipconfig /flushdns\nipconfig /renew", result: "Kiểm tra lại bằng trình duyệt ẩn danh sau khi chạy lệnh.", favorite: false, attachments: [], createdAt: "2026-10-19T14:10:00+07:00", updatedAt: "2026-10-19T14:10:00+07:00", deleted: false
+      id: "note-002", title: "Làm sạch DNS trên máy người dùng", category: "Mạng / Internet", noteName: "DNS nhanh", content: "Dùng khi người dùng không truy cập được website hoặc dịch vụ nội bộ sau khi thay đổi mạng.", commands: "ipconfig /flushdns\nipconfig /renew", result: "Kiểm tra lại bằng trình duyệt ẩn danh sau khi chạy lệnh.", tags: ["DNS", "Mạng"], favorite: false, attachments: [], createdAt: "2026-10-19T14:10:00+07:00", updatedAt: "2026-10-19T14:10:00+07:00", deleted: false
     }
   ];
 
@@ -77,6 +77,96 @@
   const icon = (name, size = 18) => `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.info}</svg>`;
   const esc = (value = "") => String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
   const safeTopicColor = (value) => /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : DEFAULT_TOPIC_COLOR;
+  const richFontSizes = { 1: "12px", 2: "14px", 3: "16px", 4: "18px", 5: "21px", 6: "24px", 7: "28px" };
+  const richFontFamilies = ["Be Vietnam Pro", "Arial", "Tahoma", "Verdana", "Georgia", "Courier New"];
+  const richAllowedTags = new Set(["A", "B", "BR", "DIV", "EM", "FONT", "I", "LI", "MARK", "OL", "P", "SPAN", "STRONG", "U", "UL"]);
+  const richDangerousTags = new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "LINK", "META"]);
+  const richStyleProperties = ["background-color", "color", "font-family", "font-size", "font-style", "font-weight", "text-decoration"];
+  function sanitizeRichStyle(styleText = "") {
+    const source = document.createElement("span");
+    source.setAttribute("style", styleText);
+    const values = richStyleProperties.map(property => {
+      const value = source.style.getPropertyValue(property).trim();
+      return value && !/url\s*\(|expression\s*\(|javascript\s*:/i.test(value) ? `${property}:${value}` : "";
+    }).filter(Boolean);
+    return values.join(";");
+  }
+  function sanitizeRichHtml(value = "") {
+    if (!value) return "";
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = String(value);
+    [...wrapper.querySelectorAll("*")].reverse().forEach(node => {
+      if (richDangerousTags.has(node.tagName)) { node.remove(); return; }
+      if (!richAllowedTags.has(node.tagName)) {
+        node.replaceWith(...node.childNodes);
+        return;
+      }
+      if (node.tagName === "FONT") {
+        const replacement = document.createElement("span");
+        if (node.getAttribute("face")) replacement.style.fontFamily = node.getAttribute("face");
+        const size = richFontSizes[node.getAttribute("size")];
+        if (size) replacement.style.fontSize = size;
+        replacement.innerHTML = node.innerHTML;
+        node.replaceWith(replacement);
+        return;
+      }
+      [...node.attributes].forEach(attribute => {
+        if (attribute.name === "style") return;
+        if (node.tagName === "A" && ["href", "target", "rel"].includes(attribute.name)) return;
+        node.removeAttribute(attribute.name);
+      });
+      if (node.tagName === "A") {
+        const href = node.getAttribute("href") || "";
+        if (!/^https?:\/\//i.test(href)) node.removeAttribute("href");
+        else { node.setAttribute("target", "_blank"); node.setAttribute("rel", "noopener noreferrer"); }
+      }
+      if (node.hasAttribute("style")) {
+        const cleanStyle = sanitizeRichStyle(node.getAttribute("style"));
+        if (cleanStyle) node.setAttribute("style", cleanStyle); else node.removeAttribute("style");
+      }
+    });
+    return wrapper.innerHTML;
+  }
+  function hasRichMarkup(value = "") { return /<\/?(a|b|br|div|em|font|i|li|mark|ol|p|span|strong|u|ul)(\s|>)/i.test(String(value)); }
+  function richHtml(value = "") { return hasRichMarkup(value) ? sanitizeRichHtml(value) : esc(value).replace(/\r?\n/g, "<br>"); }
+  function richTextToPlain(value = "") {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = richHtml(value);
+    wrapper.querySelectorAll("br").forEach(node => node.replaceWith(document.createTextNode("\n")));
+    wrapper.querySelectorAll("div,p,li").forEach(node => node.appendChild(document.createTextNode("\n")));
+    return (wrapper.textContent || "").replace(/\u00a0/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  function richDisplay(value = "") { return `<div class="rich-text">${richHtml(value)}</div>`; }
+  function richEditor(id, label, value = "", placeholder = "") {
+    const fonts = richFontFamilies.map(font => `<option value="${esc(font)}">${esc(font)}</option>`).join("");
+    const sizes = Object.entries(richFontSizes).map(([key, size]) => `<option value="${key}">${size}</option>`).join("");
+    return `<div class="rich-field"><label>${label}</label><div class="rich-toolbar" data-toolbar-for="${id}" role="toolbar" aria-label="Định dạng ${esc(label)}"><button type="button" class="rich-tool" data-rich-command="bold" data-rich-editor="${id}" title="Đậm"><strong>B</strong></button><button type="button" class="rich-tool" data-rich-command="removeFormat" data-rich-editor="${id}" title="Chữ thường">Aa</button><button type="button" class="rich-tool" data-rich-command="italic" data-rich-editor="${id}" title="Nghiêng"><em>I</em></button><button type="button" class="rich-tool highlight-tool" data-rich-command="hiliteColor" data-rich-value="#fff3a3" data-rich-editor="${id}" title="Highlight">A</button><select class="rich-select" data-rich-command="fontName" data-rich-editor="${id}" aria-label="Font chữ"><option value="">Font chữ</option>${fonts}</select><select class="rich-select" data-rich-command="fontSize" data-rich-editor="${id}" aria-label="Cỡ chữ"><option value="">Cỡ chữ</option>${sizes}</select></div><div id="rich-${id}" class="rich-editor ${id === "resolution" ? "tall" : ""}" contenteditable="true" data-rich-editor="${id}" data-placeholder="${esc(placeholder)}" role="textbox" aria-multiline="true">${richHtml(value)}</div></div>`;
+  }
+  const topicColorChoices = [{value:"#f5f3ff",label:"Tím"},{value:"#e8f1ff",label:"Xanh dương"},{value:"#e7f8ef",label:"Xanh lá"},{value:"#fff6d8",label:"Vàng"},{value:"#fff0df",label:"Cam"},{value:"#ffe8ec",label:"Đỏ"},{value:"#ffeafa",label:"Hồng"},{value:"#eef1f5",label:"Xám"}];
+  function decorateRichEditors() {
+    const editorFields = state.view === "form" ? {symptoms:"Triệu chứng", cause:"Nguyên nhân", resolution:"Các bước xử lý", result:"Kết quả / Ghi chú"} : state.view === "note-form" ? {"note-content":"Nội dung ghi chú", "note-result":"Kết quả và ghi chú"} : {};
+    for (const [id, label] of Object.entries(editorFields)) {
+      const textarea = document.getElementById(id);
+      if (!textarea) continue;
+      const field = textarea.closest(".field");
+      field.innerHTML = richEditor(id, label, textarea.value, textarea.getAttribute("placeholder") || "");
+    }
+  }
+  function decorateNoteTags() {
+    if (state.view !== "note-form" || document.getElementById("note-tag-editor")) return;
+    const nameField = document.getElementById("note-name")?.closest(".field");
+    if (!nameField) return;
+    const item = getNote(state.noteEditingId);
+    nameField.insertAdjacentHTML("afterend", `<div class="field full"><label for="note-tag-input">Tag / Từ khóa</label>${tagsEditor(item?.tags || [], "note-tag-editor", "note-tag-input")}<p class="field-help">Nhấn Enter sau mỗi tag để tìm kiếm nhanh hơn.</p></div>`);
+  }
+  function decorateTopicColorPicker() {
+    const input = document.getElementById("topic-color");
+    if (!input || input.type === "hidden") return;
+    const selected = safeTopicColor(input.value);
+    const wrapper = input.closest(".topic-color-control");
+    if (!wrapper) return;
+    wrapper.innerHTML = `<div class="topic-swatches" role="radiogroup" aria-label="Màu chủ đề">${topicColorChoices.map(choice => `<button type="button" class="topic-swatch ${choice.value.toLowerCase() === selected.toLowerCase() ? "active" : ""}" style="--swatch-color:${choice.value}" data-topic-color="${choice.value}" aria-label="${choice.label}" aria-pressed="${choice.value.toLowerCase() === selected.toLowerCase()}"><span></span>${choice.label}</button>`).join("")}</div><input id="topic-color" type="hidden" value="${selected}" />`;
+  }
   const uid = () => `case-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const formatDate = (value) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
   const formatDateTime = (value) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -92,14 +182,14 @@
     view: "cases", selectedId: stored?.cases?.find((item) => !item.deleted)?.id || seedCases[0].id, editingId: null, search: "", category: "Tất cả", status: "Tất cả", time: "Mới nhất",
     noteSelectedId: stored?.notes?.find((item) => !item.deleted)?.id || seedNotes[0].id, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả",
     theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], pendingAttachmentsReady: false, lightbox: null,
-    categoryIcons: stored?.categoryIcons || {}, customTemplates: stored?.customTemplates ?? null, sortOrders: stored?.sortOrders || {}, purgedIds: new Set(stored?.purgedIds || []), formDraft: null, editor: null
+    categoryIcons: stored?.categoryIcons || {}, customTemplates: stored?.customTemplates ?? null, sortOrders: stored?.sortOrders || {}, purgedIds: new Set(stored?.purgedIds || []), formDraft: null, editor: null, richSelection: null
   };
 
   const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases: state.cases, notes: state.notes, categories: state.categories, theme: state.theme, pageSize: state.pageSize, categoryIcons:state.categoryIcons, customTemplates:state.customTemplates, sortOrders:state.sortOrders, purgedIds:[...state.purgedIds] }));
   async function cloudRequest(payload) {
     if (!APPS_SCRIPT_URL) return null;
     // Keep extended fields in a versioned envelope supported by the existing Sheet schema.
-    if (payload.item) { const item = payload.item; payload = { ...payload, item: { ...item, attachments: [...(item.attachments || []).filter(file => file.type !== "itcn-metadata"), {type:"itcn-metadata", version:1, kind:item.kind || (item.status || item.resolution ? "case" : "note"), verifiedAt:item.verifiedAt || null, linkedIds:item.linkedIds || [], referenceUrl:item.referenceUrl || "", color:safeTopicColor(item.color), configuration:item.configuration || null}] } }; }
+    if (payload.item) { const item = payload.item; payload = { ...payload, item: { ...item, attachments: [...(item.attachments || []).filter(file => file.type !== "itcn-metadata"), {type:"itcn-metadata", version:1, kind:item.kind || (item.status || item.resolution ? "case" : "note"), verifiedAt:item.verifiedAt || null, linkedIds:item.linkedIds || [], referenceUrl:item.referenceUrl || "", color:safeTopicColor(item.color), tags:item.tags || [], configuration:item.configuration || null}] } }; }
     const response = await fetch(APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
     if (!response.ok) throw new Error(`Apps Script trả về HTTP ${response.status}`);
     const result = await response.json();
@@ -169,7 +259,7 @@
   const getNote = (id = state.noteSelectedId) => state.notes.find((item) => item.id === id) || null;
   const matches = (item, search = state.search) => {
     if (item.deleted) return false;
-    const haystack = [item.title, item.category, item.status, item.device, item.os, item.symptoms, item.cause, item.resolution, item.commands, item.content, item.noteName, item.result, ...(item.tags || [])].join(" ");
+    const haystack = [item.title, item.category, item.status, item.device, item.os, richTextToPlain(item.symptoms), richTextToPlain(item.cause), richTextToPlain(item.resolution), item.commands, richTextToPlain(item.content), item.noteName, richTextToPlain(item.result), ...(item.tags || [])].join(" ");
     return !search.trim() || normalizeSearch(haystack).includes(normalizeSearch(search.trim()));
   };
   const filteredCases = () => {
@@ -183,8 +273,8 @@
   };
   const filteredNotes = () => {
     let items = activeNotes().filter((item) => {
-      const haystack = [item.title, item.category, item.noteName, item.content, item.commands, item.result].join(" ").toLowerCase();
-      return !state.noteSearch.trim() || haystack.includes(state.noteSearch.trim().toLowerCase());
+      const haystack = [item.title, item.category, item.noteName, richTextToPlain(item.content), item.commands, richTextToPlain(item.result), ...(item.tags || [])].join(" ");
+      return !state.noteSearch.trim() || normalizeSearch(haystack).includes(normalizeSearch(state.noteSearch.trim()));
     });
     if (state.noteCategory !== "Tất cả") items = items.filter((item) => item.category === state.noteCategory);
     return sortItems(items, state.knowledgeMode ? "knowledge" : "notes");
@@ -219,7 +309,7 @@
   function caseCard(item) {
     return `<button class="case-card topic-colored ${state.selectedId === item.id ? "selected" : ""}" style="--topic-color:${safeTopicColor(item.color)}" data-select-case="${item.id}">
       <div class="case-card-title">${icon(item.category === "Máy in" ? "printer" : "windows", 17)}<span>${esc(item.title)}</span><span class="star favorite-toggle ${item.favorite ? "" : "off"}" role="button" tabindex="0" aria-label="${item.favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}" data-action="toggle-case-favorite" data-id="${item.id}">${icon("star", 15)}</span></div>
-      ${item.symptoms?.trim() ? `<p class="case-card-summary">${esc(item.symptoms.split("\n")[0])}</p>` : ""}
+      ${richTextToPlain(item.symptoms) ? `<p class="case-card-summary">${esc(richTextToPlain(item.symptoms).split("\n")[0])}</p>` : ""}
       <div class="case-card-meta">${tags(item.tags.slice(0, 4))}<span>${formatDate(item.updatedAt)}</span></div>
     </button>`;
   }
@@ -263,10 +353,10 @@
       <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 21)}</span><div><h2>${esc(item.title)}</h2>${tags(item.tags)}</div></div>
         <div class="detail-actions"><button class="button small" data-action="edit-case">${icon("edit", 14)} Chỉnh sửa</button><button class="button small" data-action="duplicate-case">${icon("copy", 14)} Nhân bản</button><button class="button small danger" data-action="delete-case">${icon("trash", 14)} Xóa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Thiết bị / Phần mềm</label><strong>${esc(item.device || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Hệ điều hành</label><strong>${esc(item.os || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Trạng thái</label><strong>${esc(item.status)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
-      ${item.symptoms?.trim() ? detailSection("symptom", "Triệu chứng", `<p>${esc(item.symptoms)}</p>`, "alert") : ""}
-      ${item.cause?.trim() ? detailSection("cause", "Nguyên nhân", `<p>${esc(item.cause)}</p>`, "help") : ""}
-      ${steps.length || item.commands?.trim() ? detailSection("resolution", "Các bước xử lý", `${steps.length ? `<ol class="steps">${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>` : ""}${item.commands?.trim() ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check") : ""}
-      ${item.result?.trim() || item.attachments?.length ? detailSection("result", "Kết quả / Ghi chú", `${item.result?.trim() ? `<p>${esc(item.result)}</p>` : ""}${attachmentsMarkup(item.attachments || [])}`, "info") : ""}
+      ${richTextToPlain(item.symptoms) ? detailSection("symptom", "Triệu chứng", richDisplay(item.symptoms), "alert") : ""}
+      ${richTextToPlain(item.cause) ? detailSection("cause", "Nguyên nhân", richDisplay(item.cause), "help") : ""}
+      ${richTextToPlain(item.resolution) || item.commands?.trim() ? detailSection("resolution", "Các bước xử lý", `${hasRichMarkup(item.resolution) ? richDisplay(item.resolution) : (steps.length ? `<ol class="steps">${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>` : "")}${item.commands?.trim() ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check") : ""}
+      ${richTextToPlain(item.result) || item.attachments?.length ? detailSection("result", "Kết quả / Ghi chú", `${richTextToPlain(item.result) ? richDisplay(item.result) : ""}${attachmentsMarkup(item.attachments || [])}`, "info") : ""}
     </article>`;
   }
 
@@ -301,20 +391,20 @@
   function noteCard(item) {
     return `<button class="case-card note-card topic-colored ${state.noteSelectedId === item.id ? "selected" : ""}" style="--topic-color:${safeTopicColor(item.color)}" data-select-note="${item.id}">
       <div class="case-card-title">${icon("book", 17)}<span>${esc(item.title)}</span><span class="star favorite-toggle ${item.favorite ? "" : "off"}" role="button" tabindex="0" aria-label="${item.favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}" data-action="toggle-note-favorite" data-id="${item.id}">${icon("star", 15)}</span></div>
-      ${(item.noteName?.trim() || item.content?.trim()) ? `<p class="case-card-summary">${item.noteName?.trim() ? `<strong>${esc(item.noteName)}</strong>` : ""}${item.noteName?.trim() && item.content?.trim() ? " · " : ""}${item.content?.trim() ? esc(item.content) : ""}</p>` : ""}
-      <div class="case-card-meta">${tags([item.category])}<span>${formatDate(item.updatedAt)}</span></div>
+      ${(item.noteName?.trim() || richTextToPlain(item.content)) ? `<p class="case-card-summary">${item.noteName?.trim() ? `<strong>${esc(item.noteName)}</strong>` : ""}${item.noteName?.trim() && richTextToPlain(item.content) ? " · " : ""}${richTextToPlain(item.content) ? esc(richTextToPlain(item.content)) : ""}</p>` : ""}
+      <div class="case-card-meta">${tags([item.category, ...(item.tags || [])].slice(0, 5))}<span>${formatDate(item.updatedAt)}</span></div>
     </button>`;
   }
 
   function noteDetailPanel(item) {
     if (!item) return `<div id="note-detail-panel" class="panel detail-panel empty" tabindex="-1"><div><div class="empty-icon">${icon("book", 26)}</div><h2>Chọn một ghi chú để xem</h2><p>Nội dung ghi chú sẽ hiển thị tại đây.</p></div></div>`;
     return `<article id="note-detail-panel" class="panel detail-panel note-detail-panel" tabindex="-1">
-      <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon("book", 21)}</span><div><h2>${esc(item.title)}</h2>${tags([item.category, item.noteName])}</div></div>
+      <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon("book", 21)}</span><div><h2>${esc(item.title)}</h2>${tags([item.category, item.noteName, ...(item.tags || [])])}</div></div>
         <div class="detail-actions"><button class="button small ${item.favorite ? "favorite-active" : ""}" data-action="toggle-note-favorite" data-id="${item.id}">${icon("star", 14)} ${item.favorite ? "Bỏ yêu thích" : "Yêu thích"}</button><button class="button small" data-action="edit-note">${icon("edit", 14)} Chỉnh sửa</button><button class="button small" data-action="duplicate-note">${icon("copy", 14)} Nhân bản</button><button class="button small danger" data-action="delete-note">${icon("trash", 14)} Xóa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Danh mục</label><strong>${esc(item.category)}</strong></div><div class="info-item"><label>Tên ghi chú</label><strong>${esc(item.noteName)}</strong></div><div class="info-item"><label>Tạo ngày</label><strong>${formatDate(item.createdAt)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
-      ${item.content?.trim() ? detailSection("note-section note-content-panel", "Nội dung ghi chú", `<p>${esc(item.content)}</p>`, "book") : ""}
+      ${richTextToPlain(item.content) ? detailSection("note-section note-content-panel", "Nội dung ghi chú", richDisplay(item.content), "book") : ""}
       ${item.commands ? detailSection("note-section note-command-section", "Lệnh CMD / PowerShell", `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>`, "command") : ""}
-      ${item.result?.trim() || item.attachments?.length ? detailSection("note-section note-result-panel", "Kết quả và ghi chú", `${item.result?.trim() ? `<p>${esc(item.result)}</p>` : ""}${attachmentsMarkup(item.attachments || [], "note-attachments")}`, "info") : ""}
+      ${richTextToPlain(item.result) || item.attachments?.length ? detailSection("note-section note-result-panel", "Kết quả và ghi chú", `${richTextToPlain(item.result) ? richDisplay(item.result) : ""}${attachmentsMarkup(item.attachments || [], "note-attachments")}`, "info") : ""}
     </article>`;
   }
 
@@ -341,8 +431,8 @@
     return `<div class="page note-form-page">${topHeading(isEdit ? "Chỉnh sửa ghi chú" : "Thêm ghi chú", isEdit ? "Cập nhật nội dung ghi chú và lệnh cần nhớ" : "Lưu nhanh kiến thức hoặc lệnh hỗ trợ IT để tra cứu lại", `<button class="button" data-action="back-to-notes">${icon("back", 14)} Quay lại ghi chú</button>`)}<form id="note-form" class="panel form-panel note-form"><div class="form-layout"><div><section class="form-section"><h3>${icon("book", 16)} Thông tin ghi chú</h3><div class="form-grid"><div class="field full"><label for="note-title">Tiêu đề <span class="required">*</span></label><input id="note-title" required value="${esc(item.title)}" placeholder="Ví dụ: Kiểm tra Print Spooler" /></div><div class="field"><label for="note-category">Danh mục</label><select id="note-category" class="select">${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="note-name">Tên ghi chú <span class="required">*</span></label><input id="note-name" required value="${esc(item.noteName)}" placeholder="Ví dụ: Print Spooler" /></div><div class="field topic-color-field"><label for="topic-color">Màu chủ đề</label><div class="topic-color-control"><input id="topic-color" class="color-picker" type="color" value="${safeTopicColor(item.color)}" /><span>Thẻ bên ngoài sẽ dùng màu này</span></div></div><div class="field full"><label for="note-content">Nội dung ghi chú <span class="optional">(tùy chọn)</span></label><textarea id="note-content" class="tall" placeholder="Ghi nội dung cần nhớ nếu có...">${esc(item.content)}</textarea></div><div class="field full"><label for="note-commands">Lệnh CMD / PowerShell</label><textarea id="note-commands" placeholder="Có thể sao chép trực tiếp khi cần...">${esc(item.commands || "")}</textarea></div><div class="field full"><label for="note-result">Kết quả và ghi chú</label><textarea id="note-result" placeholder="Kết quả, lưu ý hoặc điều kiện áp dụng...">${esc(item.result || "")}</textarea></div></div></section></div><aside class="form-side">${attachmentEditor(item.attachments || [], "note-attachment-input", "note-attachment-url", "add-note-attachment-url")}</aside></div><div class="form-footer"><button type="button" class="button" data-action="back-to-notes">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu ghi chú"}</button></div></form></div>`;
   }
 
-  function tagsEditor(values = []) {
-    return `<div class="tag-input" id="tag-editor">${values.map((tag) => `<span class="tag">${esc(tag)} <button type="button" data-remove-tag="${esc(tag)}" aria-label="Xóa tag">×</button></span>`).join("")}<input id="tag-input" placeholder="Thêm tag rồi Enter" /></div>`;
+  function tagsEditor(values = [], editorId = "tag-editor", inputId = "tag-input") {
+    return `<div class="tag-input" id="${editorId}">${values.map((tag) => `<span class="tag">${esc(tag)} <button type="button" data-remove-tag="${esc(tag)}" aria-label="Xóa tag">×</button></span>`).join("")}<input id="${inputId}" placeholder="Thêm tag rồi Enter" /></div>`;
   }
 
   function formPage() {
@@ -353,7 +443,7 @@
 
   function searchPage() {
     const items = filteredCases();
-    return `<div class="page search-page">${topHeading("Tìm kiếm case", "Tìm toàn văn trên tiêu đề, triệu chứng, nguyên nhân, giải pháp, tag và mã lỗi")}<div class="search-hero"><label class="search-input">${icon("search", 18)}<input id="global-search" type="search" value="${esc(state.search)}" placeholder="Ví dụ: Unspecified, Print Spooler, HP M211dw..." /></label><button class="button primary" data-action="search">${icon("search", 15)} Tìm kiếm</button></div><div class="result-count" style="padding-left:0"><span>${items.length} kết quả</span><span>Không cần bấm Enter, kết quả cập nhật tức thời</span></div><div class="search-results">${items.length ? items.map((item) => `<article class="search-result" data-select-case="${item.id}"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 19)}</span><div><h3>${esc(item.title)}</h3>${item.symptoms?.trim() ? `<p>${esc(item.symptoms.split("\n")[0])}</p>` : ""}${tags(item.tags)}</div><small class="subtle">${formatDate(item.updatedAt)}</small></article>`).join("") : `<div class="panel empty"><div><div class="empty-icon">${icon("search", 24)}</div><h3>Chưa có kết quả phù hợp</h3><p>Thử tên thiết bị, mã lỗi hoặc một từ khóa trong cách xử lý.</p></div></div>`}</div></div>`;
+    return `<div class="page search-page">${topHeading("Tìm kiếm case", "Tìm toàn văn trên tiêu đề, triệu chứng, nguyên nhân, giải pháp, tag và mã lỗi")}<div class="search-hero"><label class="search-input">${icon("search", 18)}<input id="global-search" type="search" value="${esc(state.search)}" placeholder="Ví dụ: Unspecified, Print Spooler, HP M211dw..." /></label><button class="button primary" data-action="search">${icon("search", 15)} Tìm kiếm</button></div><div class="result-count" style="padding-left:0"><span>${items.length} kết quả</span><span>Không cần bấm Enter, kết quả cập nhật tức thời</span></div><div class="search-results">${items.length ? items.map((item) => `<article class="search-result" data-select-case="${item.id}"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 19)}</span><div><h3>${esc(item.title)}</h3>${richTextToPlain(item.symptoms) ? `<p>${esc(richTextToPlain(item.symptoms).split("\n")[0])}</p>` : ""}${tags(item.tags)}</div><small class="subtle">${formatDate(item.updatedAt)}</small></article>`).join("") : `<div class="panel empty"><div><div class="empty-icon">${icon("search", 24)}</div><h3>Chưa có kết quả phù hợp</h3><p>Thử tên thiết bị, mã lỗi hoặc một từ khóa trong cách xử lý.</p></div></div>`}</div></div>`;
   }
 
   function categoriesPage() {
@@ -378,13 +468,13 @@
   function unifiedSearchPage() {
     const cases = activeCases().filter(item => matches(item));
     const notes = state.notes.filter(item => !item.deleted && matches(item));
-    const group = (title, items, kind) => `<section class="search-group"><h2>${title} (${items.length})</h2>${items.map(item => `<button class="search-hit" data-select-${kind}="${esc(item.id)}"><strong>${esc(item.title)}</strong><span>${esc(item.category)} · ${esc((item.symptoms || item.content || "").slice(0,180))}</span></button>`).join("") || '<p>Không có kết quả phù hợp.</p>'}</section>`;
+    const group = (title, items, kind) => `<section class="search-group"><h2>${title} (${items.length})</h2>${items.map(item => `<button class="search-hit" data-select-${kind}="${esc(item.id)}"><strong>${esc(item.title)}</strong><span>${esc(item.category)} · ${esc((richTextToPlain(item.symptoms) || richTextToPlain(item.content) || item.noteName || "").slice(0,180))}</span></button>`).join("") || '<p>Không có kết quả phù hợp.</p>'}</section>`;
     return `<div class="page">${topHeading("Tìm kiếm chung", "Tra cứu case, ghi chú và lệnh; hỗ trợ từ khóa không dấu")}<label class="search-input"><input id="global-search" aria-label="Tìm kiếm chung" type="search" value="${esc(state.search)}" placeholder="Nhập lỗi, thiết bị, lệnh hoặc nội dung..." /></label>${group("Case", cases, "case")}${group("Ghi chú", notes, "note")}</div>`;
   }
   function decodeExtendedItem(item) {
     const metadata = (item.attachments || []).find(file => file.type === "itcn-metadata");
     const isCase = Boolean(item.status || item.symptoms || item.resolution);
-    return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:isCase ? metadata.verifiedAt : null, linkedIds:metadata.linkedIds, referenceUrl:metadata.referenceUrl || "", color:safeTopicColor(metadata.color || item.color), configuration:metadata.configuration} : {color:safeTopicColor(item.color)}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
+    return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:isCase ? metadata.verifiedAt : null, linkedIds:metadata.linkedIds, referenceUrl:metadata.referenceUrl || "", color:safeTopicColor(metadata.color || item.color), tags:metadata.tags || item.tags || [], configuration:metadata.configuration} : {color:safeTopicColor(item.color), tags:item.tags || []}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
   }
   const caseTemplates = {
     "Máy in": {symptoms:"Model máy in:\nKết nối USB / LAN:\nThông báo lỗi:", resolution:"Kiểm tra nguồn và kết nối máy in.\nKiểm tra hàng đợi và Print Spooler.\nKiểm tra driver đúng model.\nIn trang thử và xác nhận với người dùng."},
@@ -456,7 +546,7 @@
     const linked = linkedIds.map(id => all.find(entry => entry.id === id)).filter(Boolean);
     const options = all.map(entry => {
       const selected = linkedIds.includes(entry.id);
-      const searchText = normalizeSearch(`${entry.title} ${entry.category} ${entry.noteName || ""}`);
+      const searchText = normalizeSearch(`${entry.title} ${entry.category} ${entry.noteName || ""} ${(entry.tags || []).join(" ")}`);
       return `<label class="related-option" data-related-option data-search="${esc(searchText)}" ${selected ? "" : "hidden"}><input type="checkbox" data-link-id="${esc(entry.id)}" ${selected ? "checked" : ""} /> <span><strong>${esc(entry.title)}</strong><small>${esc(entry.category)}${entry.kind === "knowledge" ? " · Kiến thức" : ""}</small></span></label>`;
     }).join("");
     return `<section class="related-panel"><div class="related-heading"><h3>Nội dung liên quan</h3><span class="subtle">${linked.length} topic</span></div><div class="related-current">${linked.map(entry => `<button class="button" data-open-related="${esc(entry.id)}">${esc(entry.title)}</button>`).join("") || '<p>Chưa có liên kết.</p>'}</div><button class="button small" data-action="manage-links">Chọn nội dung liên quan</button><div class="link-editor" hidden><label class="search-input related-search-input">${icon("search", 16)}<input id="related-search" type="search" placeholder="Tìm topic theo tên hoặc danh mục..." aria-label="Tìm topic liên quan" /></label><div class="related-options">${options || '<p class="subtle">Chưa có topic khác để liên kết.</p>'}</div><button class="button primary" data-action="save-links">Lưu liên kết</button></div></section>`;
@@ -472,6 +562,9 @@
     document.querySelectorAll(".steps li").forEach(node => { const text = node.textContent.replace(/^\s*\d+[.)\s-]+/, ""); node.innerHTML = `<label><input type="checkbox" /> <span>${esc(text)}</span></label>`; });
     decorateWorkspace();
     decorateNewFeatures();
+    decorateNoteTags();
+    decorateTopicColorPicker();
+    decorateRichEditors();
     restoreFormDraft();
     if (state.editor) document.querySelector('main').insertAdjacentHTML('beforeend', settingsEditor());
   }
@@ -508,8 +601,17 @@
   }
 
   function focusSearch(id = "case-search") { const input = document.getElementById(id); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } }
+  function formFieldValue(id) {
+    const editor = document.querySelector(`[contenteditable="true"][data-rich-editor="${CSS.escape(id)}"]`);
+    return editor ? sanitizeRichHtml(editor.innerHTML) : document.getElementById(id)?.value?.trim() || "";
+  }
+  function setFormFieldValue(id, value = "") {
+    const editor = document.querySelector(`[contenteditable="true"][data-rich-editor="${CSS.escape(id)}"]`);
+    const field = document.getElementById(id);
+    if (editor) editor.innerHTML = richHtml(value); else if (field) field.value = value;
+  }
   function formData() {
-    const field = (id) => document.getElementById(id)?.value?.trim() || "";
+    const field = (id) => formFieldValue(id);
     return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
   }
   function saveForm(event) {
@@ -530,19 +632,30 @@
     syncItem("upsertCase", state.cases.find((item) => item.id === state.selectedId));
   }
   function noteFormData() {
-    const field = (id) => document.getElementById(id)?.value?.trim() || "";
-    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
+    const field = (id) => formFieldValue(id);
+    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), tags: [...document.querySelectorAll("#note-tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
   }
   function captureFormDraft() {
     const ids = ["title", "category", "status", "device", "os", "symptoms", "cause", "resolution", "commands", "result", "reference-url", "topic-color", "note-title", "note-category", "note-name", "note-content", "note-commands", "note-result"];
-    state.formDraft = Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value ?? ""]).filter(([, value]) => value !== ""));
+    state.formDraft = {values:Object.fromEntries(ids.map(id => [id, formFieldValue(id)]).filter(([, value]) => value !== "")), tags:[...document.querySelectorAll("#tag-editor .tag, #note-tag-editor .tag")].map(node => node.textContent.replace("×", "").trim())};
   }
   function restoreFormDraft() {
     if (!state.formDraft) return;
-    for (const [id, value] of Object.entries(state.formDraft)) {
+    const values = state.formDraft.values || state.formDraft;
+    for (const [id, value] of Object.entries(values)) {
+      const editor = document.querySelector(`[contenteditable="true"][data-rich-editor="${CSS.escape(id)}"]`);
       const field = document.getElementById(id);
-      if (field) field.value = value;
+      if (editor) editor.innerHTML = richHtml(value);
+      else if (field) field.value = value;
     }
+    const tagEditor = document.querySelector("#tag-editor, #note-tag-editor");
+    if (tagEditor && Array.isArray(state.formDraft.tags)) {
+      tagEditor.querySelectorAll(".tag").forEach(node => node.remove());
+      const input = tagEditor.querySelector("input");
+      state.formDraft.tags.forEach(tag => { const node = document.createElement("span"); node.className = "tag"; node.innerHTML = `${esc(tag)} <button type="button" data-remove-tag="${esc(tag)}" aria-label="Xóa tag">×</button>`; tagEditor.insertBefore(node, input); });
+    }
+    const topicInput = document.getElementById("topic-color");
+    if (topicInput) document.querySelectorAll("[data-topic-color]").forEach(node => { const active = node.dataset.topicColor.toLowerCase() === topicInput.value.toLowerCase(); node.classList.toggle("active", active); node.setAttribute("aria-pressed", String(active)); });
     state.formDraft = null;
   }
   function saveNoteForm(event) {
@@ -562,6 +675,21 @@
     }
     state.pendingAttachments = []; state.pendingAttachmentsReady = false; state.noteEditingId = null; state.view = "notes"; save(); render();
     syncItem("upsertNote", state.notes.find((item) => item.id === state.noteSelectedId));
+  }
+  function rememberRichSelection(editor) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !editor.contains(selection.anchorNode)) return;
+    state.richSelection = {id: editor.dataset.richEditor, range: selection.getRangeAt(0).cloneRange()};
+  }
+  function runRichCommand(editorId, command, value = null) {
+    const editor = document.querySelector(`[contenteditable="true"][data-rich-editor="${CSS.escape(editorId)}"]`);
+    if (!editor) return;
+    editor.focus();
+    if (state.richSelection?.id === editorId) {
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(state.richSelection.range);
+    }
+    try { document.execCommand(command, false, value); } catch { /* Unsupported browser command; leave content unchanged. */ }
+    rememberRichSelection(editor);
   }
   function parseTagsInput(event) {
     const input = event.target; if (event.key !== "Enter") return; event.preventDefault(); const value = input.value.trim(); if (!value) return; const editor = input.closest(".tag-input"); if (editor.querySelector(`[data-remove-tag="${CSS.escape(value)}"]`)) return; const tag = document.createElement("span"); tag.className = "tag"; tag.innerHTML = `${esc(value)} <button type="button" data-remove-tag="${esc(value)}" aria-label="Xóa tag">×</button>`; editor.insertBefore(tag, input); input.value = "";
@@ -685,6 +813,17 @@
   }
 
   document.addEventListener("click", (event) => {
+    const topicColor = event.target.closest("[data-topic-color]");
+    if (topicColor) {
+      const input = document.getElementById("topic-color");
+      if (input) {
+        input.value = safeTopicColor(topicColor.dataset.topicColor);
+        document.querySelectorAll("[data-topic-color]").forEach(node => { const active = node.dataset.topicColor.toLowerCase() === input.value.toLowerCase(); node.classList.toggle("active", active); node.setAttribute("aria-pressed", String(active)); });
+      }
+      return;
+    }
+    const richTool = event.target.closest("[data-rich-command]");
+    if (richTool?.tagName === "BUTTON") { runRichCommand(richTool.dataset.richEditor, richTool.dataset.richCommand, richTool.dataset.richValue || null); return; }
     const actionTarget = event.target.closest("[data-action]");
     const action = actionTarget?.dataset.action;
     if (action === "embed-reference") {
@@ -714,7 +853,7 @@
     if(deleteTemplate) {if(confirm('Xóa mẫu case này? Các case đã tạo sẽ được giữ lại.')) {state.customTemplates = availableTemplates().filter(item => item.id !== deleteTemplate.dataset.deleteTemplate); saveConfiguration(); render();} return;}
     const related = event.target.closest('[data-open-related]');
     if (related) { const id = related.dataset.openRelated; if (state.cases.some(item => item.id === id)) openCaseDetail(id); else openNoteDetail(id); return; }
-    if (action === "apply-template") { const id = document.getElementById('case-template').value; const template = availableTemplates().find(item => item.id === id); if (!template) return; if (Object.keys(template.fields).some(key => document.getElementById(key)?.value) && !confirm('Thay nội dung các trường bằng mẫu đã chọn?')) return; document.getElementById('category').value = template.category; for (const [key,value] of Object.entries(template.fields)) {const field = document.getElementById(key); if(field) field.value = value;} return; }
+    if (action === "apply-template") { const id = document.getElementById('case-template').value; const template = availableTemplates().find(item => item.id === id); if (!template) return; if (Object.keys(template.fields).some(key => formFieldValue(key)) && !confirm('Thay nội dung các trường bằng mẫu đã chọn?')) return; setFormFieldValue('category', template.category); for (const [key,value] of Object.entries(template.fields)) setFormFieldValue(key, value); return; }
     if (action === "manage-links") { const editor = document.querySelector('.link-editor'); if (editor) { editor.hidden = false; document.getElementById('related-search')?.focus(); } return; }
     if (action === "save-links" || action === "verify-item") {
       const isCase = Boolean(document.getElementById('case-detail-panel')); const item = isCase ? getCase() : getNote(); if (!item) return;
@@ -797,15 +936,24 @@
       });
     }
   });
+  document.addEventListener("mousedown", (event) => {
+    const tool = event.target.closest("[data-rich-command]");
+    if (tool) {
+      const editor = document.querySelector(`[contenteditable="true"][data-rich-editor="${CSS.escape(tool.dataset.richEditor)}"]`);
+      if (editor) rememberRichSelection(editor);
+      if (tool.tagName === "BUTTON") event.preventDefault();
+    }
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.lightbox) { state.lightbox = null; render(); return; }
     const actionTarget = event.target.closest("[data-action]");
     if ((event.key === "Enter" || event.key === " ") && actionTarget && ["toggle-case-favorite", "toggle-note-favorite", "open-image", "close-image"].includes(actionTarget.dataset.action)) { event.preventDefault(); actionTarget.click(); return; }
-    if (event.target.id === "tag-input") parseTagsInput(event);
+    if (event.target.closest(".tag-input")) parseTagsInput(event);
     if (event.key === "Enter" && (event.target.id === "case-search" || event.target.id === "global-search")) { event.preventDefault(); state.search = event.target.value; render(); }
     if (event.key === "Enter" && event.target.id === "note-search") { event.preventDefault(); state.noteSearch = event.target.value; render(); }
   });
   document.addEventListener("change", (event) => {
+    if (event.target.matches("[data-rich-command]")) { runRichCommand(event.target.dataset.richEditor, event.target.dataset.richCommand, event.target.value || null); event.target.value = ""; return; }
     if (event.target.dataset.sortKey) {state.sortOrders[event.target.dataset.sortKey] = event.target.value; save(); render(); return;}
     if (event.target.dataset.filter === "category") { state.category = event.target.value === "Tất cả danh mục" ? "Tất cả" : event.target.value; render(); }
     if (event.target.dataset.filter === "status") { state.status = event.target.value === "Tất cả trạng thái" ? "Tất cả" : event.target.value; render(); }
