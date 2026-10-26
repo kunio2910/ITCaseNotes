@@ -3,6 +3,7 @@
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbztFNsgy97o330lkOpT9zEpGuk2brnA5d29lHa9J4d9lCl2HM-A9i1BahruAqiv8VEAVA/exec";
   const cloudState = { status: "Đang kết nối", syncing: false };
   const categoryColors = ["#287fd6", "#e89927", "#eb5d3f", "#7156c7", "#21a36d", "#3c526c", "#d34a8b", "#5c8c2f"];
+  const DEFAULT_TOPIC_COLOR = "#f5f3ff";
 
   const seedCases = [
     {
@@ -75,6 +76,7 @@
 
   const icon = (name, size = 18) => `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.info}</svg>`;
   const esc = (value = "") => String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
+  const safeTopicColor = (value) => /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : DEFAULT_TOPIC_COLOR;
   const uid = () => `case-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const formatDate = (value) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
   const formatDateTime = (value) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -97,7 +99,7 @@
   async function cloudRequest(payload) {
     if (!APPS_SCRIPT_URL) return null;
     // Keep extended fields in a versioned envelope supported by the existing Sheet schema.
-    if (payload.item) { const item = payload.item; payload = { ...payload, item: { ...item, attachments: [...(item.attachments || []).filter(file => file.type !== "itcn-metadata"), {type:"itcn-metadata", version:1, kind:item.kind || (item.status || item.resolution ? "case" : "note"), verifiedAt:item.verifiedAt || null, linkedIds:item.linkedIds || [], referenceUrl:item.referenceUrl || "", configuration:item.configuration || null}] } }; }
+    if (payload.item) { const item = payload.item; payload = { ...payload, item: { ...item, attachments: [...(item.attachments || []).filter(file => file.type !== "itcn-metadata"), {type:"itcn-metadata", version:1, kind:item.kind || (item.status || item.resolution ? "case" : "note"), verifiedAt:item.verifiedAt || null, linkedIds:item.linkedIds || [], referenceUrl:item.referenceUrl || "", color:safeTopicColor(item.color), configuration:item.configuration || null}] } }; }
     const response = await fetch(APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) });
     if (!response.ok) throw new Error(`Apps Script trả về HTTP ${response.status}`);
     const result = await response.json();
@@ -215,7 +217,7 @@
   function tags(tags = []) { return `<div class="tag-row">${tags.map((tag) => `<span class="tag ${tagClass(tag)}">${esc(tag)}</span>`).join("")}</div>`; }
 
   function caseCard(item) {
-    return `<button class="case-card ${state.selectedId === item.id ? "selected" : ""}" data-select-case="${item.id}">
+    return `<button class="case-card topic-colored ${state.selectedId === item.id ? "selected" : ""}" style="--topic-color:${safeTopicColor(item.color)}" data-select-case="${item.id}">
       <div class="case-card-title">${icon(item.category === "Máy in" ? "printer" : "windows", 17)}<span>${esc(item.title)}</span><span class="star favorite-toggle ${item.favorite ? "" : "off"}" role="button" tabindex="0" aria-label="${item.favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}" data-action="toggle-case-favorite" data-id="${item.id}">${icon("star", 15)}</span></div>
       ${item.symptoms?.trim() ? `<p class="case-card-summary">${esc(item.symptoms.split("\n")[0])}</p>` : ""}
       <div class="case-card-meta">${tags(item.tags.slice(0, 4))}<span>${formatDate(item.updatedAt)}</span></div>
@@ -297,7 +299,7 @@
   }
 
   function noteCard(item) {
-    return `<button class="case-card note-card ${state.noteSelectedId === item.id ? "selected" : ""}" data-select-note="${item.id}">
+    return `<button class="case-card note-card topic-colored ${state.noteSelectedId === item.id ? "selected" : ""}" style="--topic-color:${safeTopicColor(item.color)}" data-select-note="${item.id}">
       <div class="case-card-title">${icon("book", 17)}<span>${esc(item.title)}</span><span class="star favorite-toggle ${item.favorite ? "" : "off"}" role="button" tabindex="0" aria-label="${item.favorite ? "Bỏ yêu thích" : "Thêm vào yêu thích"}" data-action="toggle-note-favorite" data-id="${item.id}">${icon("star", 15)}</span></div>
       ${(item.noteName?.trim() || item.content?.trim()) ? `<p class="case-card-summary">${item.noteName?.trim() ? `<strong>${esc(item.noteName)}</strong>` : ""}${item.noteName?.trim() && item.content?.trim() ? " · " : ""}${item.content?.trim() ? esc(item.content) : ""}</p>` : ""}
       <div class="case-card-meta">${tags([item.category])}<span>${formatDate(item.updatedAt)}</span></div>
@@ -334,9 +336,9 @@
   }
 
   function noteFormPage() {
-    const item = getNote(state.noteEditingId) || { title: "", category: state.categories[0], noteName: "", content: "", commands: "", result: "", attachments: [] };
+    const item = getNote(state.noteEditingId) || { title: "", category: state.categories[0], noteName: "", content: "", commands: "", result: "", color: DEFAULT_TOPIC_COLOR, attachments: [] };
     const isEdit = Boolean(state.noteEditingId);
-    return `<div class="page note-form-page">${topHeading(isEdit ? "Chỉnh sửa ghi chú" : "Thêm ghi chú", isEdit ? "Cập nhật nội dung ghi chú và lệnh cần nhớ" : "Lưu nhanh kiến thức hoặc lệnh hỗ trợ IT để tra cứu lại", `<button class="button" data-action="back-to-notes">${icon("back", 14)} Quay lại ghi chú</button>`)}<form id="note-form" class="panel form-panel note-form"><div class="form-layout"><div><section class="form-section"><h3>${icon("book", 16)} Thông tin ghi chú</h3><div class="form-grid"><div class="field full"><label for="note-title">Tiêu đề <span class="required">*</span></label><input id="note-title" required value="${esc(item.title)}" placeholder="Ví dụ: Kiểm tra Print Spooler" /></div><div class="field"><label for="note-category">Danh mục</label><select id="note-category" class="select">${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="note-name">Tên ghi chú <span class="required">*</span></label><input id="note-name" required value="${esc(item.noteName)}" placeholder="Ví dụ: Print Spooler" /></div><div class="field full"><label for="note-content">Nội dung ghi chú <span class="optional">(tùy chọn)</span></label><textarea id="note-content" class="tall" placeholder="Ghi nội dung cần nhớ nếu có...">${esc(item.content)}</textarea></div><div class="field full"><label for="note-commands">Lệnh CMD / PowerShell</label><textarea id="note-commands" placeholder="Có thể sao chép trực tiếp khi cần...">${esc(item.commands || "")}</textarea></div><div class="field full"><label for="note-result">Kết quả và ghi chú</label><textarea id="note-result" placeholder="Kết quả, lưu ý hoặc điều kiện áp dụng...">${esc(item.result || "")}</textarea></div></div></section></div><aside class="form-side">${attachmentEditor(item.attachments || [], "note-attachment-input", "note-attachment-url", "add-note-attachment-url")}</aside></div><div class="form-footer"><button type="button" class="button" data-action="back-to-notes">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu ghi chú"}</button></div></form></div>`;
+    return `<div class="page note-form-page">${topHeading(isEdit ? "Chỉnh sửa ghi chú" : "Thêm ghi chú", isEdit ? "Cập nhật nội dung ghi chú và lệnh cần nhớ" : "Lưu nhanh kiến thức hoặc lệnh hỗ trợ IT để tra cứu lại", `<button class="button" data-action="back-to-notes">${icon("back", 14)} Quay lại ghi chú</button>`)}<form id="note-form" class="panel form-panel note-form"><div class="form-layout"><div><section class="form-section"><h3>${icon("book", 16)} Thông tin ghi chú</h3><div class="form-grid"><div class="field full"><label for="note-title">Tiêu đề <span class="required">*</span></label><input id="note-title" required value="${esc(item.title)}" placeholder="Ví dụ: Kiểm tra Print Spooler" /></div><div class="field"><label for="note-category">Danh mục</label><select id="note-category" class="select">${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="note-name">Tên ghi chú <span class="required">*</span></label><input id="note-name" required value="${esc(item.noteName)}" placeholder="Ví dụ: Print Spooler" /></div><div class="field topic-color-field"><label for="topic-color">Màu chủ đề</label><div class="topic-color-control"><input id="topic-color" class="color-picker" type="color" value="${safeTopicColor(item.color)}" /><span>Thẻ bên ngoài sẽ dùng màu này</span></div></div><div class="field full"><label for="note-content">Nội dung ghi chú <span class="optional">(tùy chọn)</span></label><textarea id="note-content" class="tall" placeholder="Ghi nội dung cần nhớ nếu có...">${esc(item.content)}</textarea></div><div class="field full"><label for="note-commands">Lệnh CMD / PowerShell</label><textarea id="note-commands" placeholder="Có thể sao chép trực tiếp khi cần...">${esc(item.commands || "")}</textarea></div><div class="field full"><label for="note-result">Kết quả và ghi chú</label><textarea id="note-result" placeholder="Kết quả, lưu ý hoặc điều kiện áp dụng...">${esc(item.result || "")}</textarea></div></div></section></div><aside class="form-side">${attachmentEditor(item.attachments || [], "note-attachment-input", "note-attachment-url", "add-note-attachment-url")}</aside></div><div class="form-footer"><button type="button" class="button" data-action="back-to-notes">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu ghi chú"}</button></div></form></div>`;
   }
 
   function tagsEditor(values = []) {
@@ -344,9 +346,9 @@
   }
 
   function formPage() {
-    const item = getCase(state.editingId) || { title: "", category: state.categories[0], status: "Đang xác minh", device: "", os: "", symptoms: "", cause: "", resolution: "", commands: "", result: "", tags: [], attachments: [] };
+    const item = getCase(state.editingId) || { title: "", category: state.categories[0], status: "Đang xác minh", device: "", os: "", symptoms: "", cause: "", resolution: "", commands: "", result: "", color: DEFAULT_TOPIC_COLOR, tags: [], attachments: [] };
     const isEdit = Boolean(state.editingId);
-    return `<div class="page">${topHeading(isEdit ? "Chỉnh sửa case" : "Thêm case mới", isEdit ? "Cập nhật nguyên nhân, giải pháp hoặc ghi chú cho case" : "Ghi lại sự cố và các bước xử lý để dùng lại sau này", `<button class="button" data-action="cancel-form">${icon("back", 14)} Quay lại</button>`)}<form id="case-form" class="panel form-panel"><div class="form-layout"><div><section class="form-section"><h3>${icon("info", 16)} Thông tin case</h3><div class="form-grid"><div class="field full"><label for="title">Tiêu đề <span class="required">*</span></label><input id="title" required value="${esc(item.title)}" placeholder="Ví dụ: Không thể kết nối máy in qua USB" /></div><div class="field"><label for="category">Danh mục <span class="required">*</span></label><select id="category" class="select" required>${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="status">Trạng thái</label><select id="status" class="select"><option ${item.status === "Đang xác minh" ? "selected" : ""}>Đang xác minh</option><option ${item.status === "Đã xử lý" ? "selected" : ""}>Đã xử lý</option></select></div><div class="field"><label for="device">Thiết bị / Phần mềm</label><input id="device" value="${esc(item.device)}" placeholder="HP M211dw, Outlook..." /></div><div class="field"><label for="os">Hệ điều hành</label><input id="os" value="${esc(item.os)}" placeholder="Windows 11 25H2" /></div><div class="field full"><label for="symptoms">Triệu chứng <span class="optional">(tùy chọn)</span></label><textarea id="symptoms" placeholder="Mô tả dấu hiệu, thông báo lỗi nếu có...">${esc(item.symptoms)}</textarea></div><div class="field full"><label for="cause">Nguyên nhân</label><textarea id="cause" placeholder="Có thể ghi nguyên nhân chưa xác minh để cập nhật sau...">${esc(item.cause)}</textarea></div></div></section><section class="form-section"><h3>${icon("check", 16)} Cách xử lý <span class="optional">(tùy chọn)</span></h3><div class="field"><label for="resolution">Các bước xử lý (mỗi dòng là một bước)</label><textarea id="resolution" class="tall" placeholder="1. Kiểm tra...\n2. Cài lại...">${esc(item.resolution)}</textarea></div><div class="field" style="margin-top:13px"><label for="commands">Lệnh CMD / PowerShell</label><textarea id="commands" placeholder="Có thể sao chép trực tiếp khi xử lý...">${esc(item.commands || "")}</textarea></div></section><section class="form-section"><h3>${icon("info", 16)} Kết quả và ghi chú</h3><div class="field"><label for="result">Kết quả / Ghi chú</label><textarea id="result" placeholder="Kết quả sau khi xử lý, lưu ý cho lần sau...">${esc(item.result || "")}</textarea></div></section></div><aside class="form-side"><section class="form-section"><h3>${icon("folder", 16)} Tag / Từ khóa</h3><div class="field">${tagsEditor(item.tags || [])}<p class="field-help">Tag giúp tìm kiếm case nhanh hơn.</p></div></section>${attachmentEditor(item.attachments || [])}</aside></div><div class="form-footer"><button type="button" class="button" data-action="cancel-form">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu case"}</button></div></form></div>`;
+    return `<div class="page">${topHeading(isEdit ? "Chỉnh sửa case" : "Thêm case mới", isEdit ? "Cập nhật nguyên nhân, giải pháp hoặc ghi chú cho case" : "Ghi lại sự cố và các bước xử lý để dùng lại sau này", `<button class="button" data-action="cancel-form">${icon("back", 14)} Quay lại</button>`)}<form id="case-form" class="panel form-panel"><div class="form-layout"><div><section class="form-section"><h3>${icon("info", 16)} Thông tin case</h3><div class="form-grid"><div class="field full"><label for="title">Tiêu đề <span class="required">*</span></label><input id="title" required value="${esc(item.title)}" placeholder="Ví dụ: Không thể kết nối máy in qua USB" /></div><div class="field"><label for="category">Danh mục <span class="required">*</span></label><select id="category" class="select" required>${state.categories.map((category) => `<option ${item.category === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select></div><div class="field"><label for="status">Trạng thái</label><select id="status" class="select"><option ${item.status === "Đang xác minh" ? "selected" : ""}>Đang xác minh</option><option ${item.status === "Đã xử lý" ? "selected" : ""}>Đã xử lý</option></select></div><div class="field topic-color-field"><label for="topic-color">Màu chủ đề</label><div class="topic-color-control"><input id="topic-color" class="color-picker" type="color" value="${safeTopicColor(item.color)}" /><span>Thẻ bên ngoài sẽ dùng màu này</span></div></div><div class="field"><label for="device">Thiết bị / Phần mềm</label><input id="device" value="${esc(item.device)}" placeholder="HP M211dw, Outlook..." /></div><div class="field"><label for="os">Hệ điều hành</label><input id="os" value="${esc(item.os)}" placeholder="Windows 11 25H2" /></div><div class="field full"><label for="symptoms">Triệu chứng <span class="optional">(tùy chọn)</span></label><textarea id="symptoms" placeholder="Mô tả dấu hiệu, thông báo lỗi nếu có...">${esc(item.symptoms)}</textarea></div><div class="field full"><label for="cause">Nguyên nhân</label><textarea id="cause" placeholder="Có thể ghi nguyên nhân chưa xác minh để cập nhật sau...">${esc(item.cause)}</textarea></div></div></section><section class="form-section"><h3>${icon("check", 16)} Cách xử lý <span class="optional">(tùy chọn)</span></h3><div class="field"><label for="resolution">Các bước xử lý (mỗi dòng là một bước)</label><textarea id="resolution" class="tall" placeholder="1. Kiểm tra...\n2. Cài lại...">${esc(item.resolution)}</textarea></div><div class="field" style="margin-top:13px"><label for="commands">Lệnh CMD / PowerShell</label><textarea id="commands" placeholder="Có thể sao chép trực tiếp khi xử lý...">${esc(item.commands || "")}</textarea></div></section><section class="form-section"><h3>${icon("info", 16)} Kết quả và ghi chú</h3><div class="field"><label for="result">Kết quả / Ghi chú</label><textarea id="result" placeholder="Kết quả sau khi xử lý, lưu ý cho lần sau...">${esc(item.result || "")}</textarea></div></section></div><aside class="form-side"><section class="form-section"><h3>${icon("folder", 16)} Tag / Từ khóa</h3><div class="field">${tagsEditor(item.tags || [])}<p class="field-help">Tag giúp tìm kiếm case nhanh hơn.</p></div></section>${attachmentEditor(item.attachments || [])}</aside></div><div class="form-footer"><button type="button" class="button" data-action="cancel-form">Hủy</button><button type="submit" class="button primary">${icon("check", 15)} ${isEdit ? "Lưu thay đổi" : "Lưu case"}</button></div></form></div>`;
   }
 
   function searchPage() {
@@ -382,7 +384,7 @@
   function decodeExtendedItem(item) {
     const metadata = (item.attachments || []).find(file => file.type === "itcn-metadata");
     const isCase = Boolean(item.status || item.symptoms || item.resolution);
-    return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:isCase ? metadata.verifiedAt : null, linkedIds:metadata.linkedIds, referenceUrl:metadata.referenceUrl || "", configuration:metadata.configuration} : {}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
+    return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:isCase ? metadata.verifiedAt : null, linkedIds:metadata.linkedIds, referenceUrl:metadata.referenceUrl || "", color:safeTopicColor(metadata.color || item.color), configuration:metadata.configuration} : {color:safeTopicColor(item.color)}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
   }
   const caseTemplates = {
     "Máy in": {symptoms:"Model máy in:\nKết nối USB / LAN:\nThông báo lỗi:", resolution:"Kiểm tra nguồn và kết nối máy in.\nKiểm tra hàng đợi và Print Spooler.\nKiểm tra driver đúng model.\nIn trang thử và xác nhận với người dùng."},
@@ -442,9 +444,22 @@
     document.querySelectorAll('[data-select-case]').forEach(card => {const item = getCase(card.dataset.selectCase); const svg = card.querySelector('.case-card-title > svg'); if(item && svg) svg.outerHTML = icon(categoryIcon(item.category),17);});
   }
   function rememberItem(type, id) { const items = recentItems().filter(item => item.id !== id); items.unshift({type,id,viewedAt:new Date().toISOString()}); localStorage.setItem("itcn-recent", JSON.stringify(items.slice(0,12))); }
-  function relatedMarkup(item) {
+  function legacyRelatedMarkup(item) {
     const all = [...state.cases, ...state.notes].filter(entry => !entry.deleted && entry.id !== item.id);
     return `<section class="related-panel"><h3>Nội dung liên quan</h3>${(item.linkedIds || []).map(id => all.find(entry => entry.id === id)).filter(Boolean).map(entry => `<button class="button" data-open-related="${esc(entry.id)}">${esc(entry.title)}</button>`).join("") || '<p>Chưa có liên kết.</p>'}<button class="button small" data-action="manage-links">Chỉnh liên kết</button><div class="link-editor" hidden>${all.map(entry => `<label><input type="checkbox" data-link-id="${esc(entry.id)}" ${(item.linkedIds || []).includes(entry.id) ? "checked" : ""} /> ${esc(entry.title)}</label>`).join("")}<button class="button primary" data-action="save-links">Lưu liên kết</button></div></section>`;
+  }
+  function activeRelatedEntries(item) { return [...state.cases, ...state.notes].filter(entry => !entry.deleted && entry.id !== item.id); }
+  function validLinkedIds(item, entries = activeRelatedEntries(item)) { const available = new Set(entries.map(entry => entry.id)); return [...new Set(item.linkedIds || [])].filter(id => available.has(id)); }
+  function relatedMarkup(item) {
+    const all = activeRelatedEntries(item);
+    const linkedIds = validLinkedIds(item, all);
+    const linked = linkedIds.map(id => all.find(entry => entry.id === id)).filter(Boolean);
+    const options = all.map(entry => {
+      const selected = linkedIds.includes(entry.id);
+      const searchText = normalizeSearch(`${entry.title} ${entry.category} ${entry.noteName || ""}`);
+      return `<label class="related-option" data-related-option data-search="${esc(searchText)}" ${selected ? "" : "hidden"}><input type="checkbox" data-link-id="${esc(entry.id)}" ${selected ? "checked" : ""} /> <span><strong>${esc(entry.title)}</strong><small>${esc(entry.category)}${entry.kind === "knowledge" ? " · Kiến thức" : ""}</small></span></label>`;
+    }).join("");
+    return `<section class="related-panel"><div class="related-heading"><h3>Nội dung liên quan</h3><span class="subtle">${linked.length} topic</span></div><div class="related-current">${linked.map(entry => `<button class="button" data-open-related="${esc(entry.id)}">${esc(entry.title)}</button>`).join("") || '<p>Chưa có liên kết.</p>'}</div><button class="button small" data-action="manage-links">Chọn nội dung liên quan</button><div class="link-editor" hidden><label class="search-input related-search-input">${icon("search", 16)}<input id="related-search" type="search" placeholder="Tìm topic theo tên hoặc danh mục..." aria-label="Tìm topic liên quan" /></label><div class="related-options">${options || '<p class="subtle">Chưa có topic khác để liên kết.</p>'}</div><button class="button primary" data-action="save-links">Lưu liên kết</button></div></section>`;
   }
   function render() {
     if (state.view === "knowledge") { state.knowledgeMode = true; state.view = "notes"; }
@@ -495,7 +510,7 @@
   function focusSearch(id = "case-search") { const input = document.getElementById(id); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } }
   function formData() {
     const field = (id) => document.getElementById(id)?.value?.trim() || "";
-    return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), referenceUrl: field("reference-url"), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
+    return { title: field("title"), category: field("category"), status: field("status"), device: field("device"), os: field("os"), symptoms: field("symptoms"), cause: field("cause"), resolution: field("resolution"), commands: field("commands"), result: field("result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), tags: [...document.querySelectorAll("#tag-editor .tag")].map((node) => node.textContent.replace("×", "").trim()), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
   }
   function saveForm(event) {
     event.preventDefault();
@@ -516,10 +531,10 @@
   }
   function noteFormData() {
     const field = (id) => document.getElementById(id)?.value?.trim() || "";
-    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
+    return { title: field("note-title"), category: field("note-category"), noteName: field("note-name"), content: field("note-content"), commands: field("note-commands"), result: field("note-result"), referenceUrl: field("reference-url"), color: safeTopicColor(document.getElementById("topic-color")?.value), attachments: state.pendingAttachmentsReady ? state.pendingAttachments : formExistingAttachments(), attachmentsTouched: state.pendingAttachmentsReady };
   }
   function captureFormDraft() {
-    const ids = ["title", "category", "status", "device", "os", "symptoms", "cause", "resolution", "commands", "result", "reference-url", "note-title", "note-category", "note-name", "note-content", "note-commands", "note-result"];
+    const ids = ["title", "category", "status", "device", "os", "symptoms", "cause", "resolution", "commands", "result", "reference-url", "topic-color", "note-title", "note-category", "note-name", "note-content", "note-commands", "note-result"];
     state.formDraft = Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value ?? ""]).filter(([, value]) => value !== ""));
   }
   function restoreFormDraft() {
@@ -624,10 +639,21 @@
     state.notes.unshift(copy); state.noteSelectedId = copy.id; state.view = "note-detail"; save(); render(); syncItem("upsertNote", copy); toast("Đã nhân bản ghi chú.");
   }
 
+  function pruneLinkedReferences(deletedId) {
+    const now = new Date().toISOString();
+    for (const entry of [...state.cases, ...state.notes]) {
+      if (entry.id === deletedId || entry.deleted || !(entry.linkedIds || []).includes(deletedId)) continue;
+      entry.linkedIds = (entry.linkedIds || []).filter(id => id !== deletedId);
+      entry.updatedAt = now;
+      syncItem(state.cases.includes(entry) ? "upsertCase" : "upsertNote", entry);
+    }
+  }
+
   function deleteNote() {
     const item = getNote();
     if (!item) return;
     item.deleted = true; item.favorite = false; item.updatedAt = new Date().toISOString();
+    pruneLinkedReferences(item.id);
     state.noteSelectedId = activeNotes()[0]?.id || null; state.view = "notes"; save(); render(); syncItem("upsertNote", item); toast("Đã chuyển ghi chú vào thùng rác.");
   }
 
@@ -636,6 +662,7 @@
     const item = collection.find(entry => entry.id === id && entry.deleted);
     if (!item) return;
     state.purgedIds.add(id);
+    pruneLinkedReferences(id);
     syncItem(type === "case" ? "upsertCase" : "upsertNote", item);
     if (type === "case") state.cases = state.cases.filter(entry => entry.id !== id);
     else state.notes = state.notes.filter(entry => entry.id !== id);
@@ -648,8 +675,8 @@
     const deletedCases = state.cases.filter(item => item.deleted);
     const deletedNotes = state.notes.filter(item => item.deleted);
     if (!deletedCases.length && !deletedNotes.length) return;
-    for (const item of deletedCases) { state.purgedIds.add(item.id); syncItem("upsertCase", item); }
-    for (const item of deletedNotes) { state.purgedIds.add(item.id); syncItem("upsertNote", item); }
+    for (const item of deletedCases) { state.purgedIds.add(item.id); pruneLinkedReferences(item.id); syncItem("upsertCase", item); }
+    for (const item of deletedNotes) { state.purgedIds.add(item.id); pruneLinkedReferences(item.id); syncItem("upsertNote", item); }
     state.cases = state.cases.filter(item => !item.deleted);
     state.notes = state.notes.filter(item => !item.deleted);
     state.selectedId = activeCases()[0]?.id || null;
@@ -688,10 +715,10 @@
     const related = event.target.closest('[data-open-related]');
     if (related) { const id = related.dataset.openRelated; if (state.cases.some(item => item.id === id)) openCaseDetail(id); else openNoteDetail(id); return; }
     if (action === "apply-template") { const id = document.getElementById('case-template').value; const template = availableTemplates().find(item => item.id === id); if (!template) return; if (Object.keys(template.fields).some(key => document.getElementById(key)?.value) && !confirm('Thay nội dung các trường bằng mẫu đã chọn?')) return; document.getElementById('category').value = template.category; for (const [key,value] of Object.entries(template.fields)) {const field = document.getElementById(key); if(field) field.value = value;} return; }
-    if (action === "manage-links") { document.querySelector('.link-editor').hidden = false; return; }
+    if (action === "manage-links") { const editor = document.querySelector('.link-editor'); if (editor) { editor.hidden = false; document.getElementById('related-search')?.focus(); } return; }
     if (action === "save-links" || action === "verify-item") {
       const isCase = Boolean(document.getElementById('case-detail-panel')); const item = isCase ? getCase() : getNote(); if (!item) return;
-      if(action === "save-links") item.linkedIds = [...document.querySelectorAll('[data-link-id]:checked')].map(node => node.dataset.linkId);
+      if(action === "save-links") item.linkedIds = validLinkedIds({linkedIds:[...document.querySelectorAll('[data-link-id]:checked')].map(node => node.dataset.linkId)}, activeRelatedEntries(item));
       else item.verifiedAt = item.verifiedAt ? null : new Date().toISOString();
       item.updatedAt = new Date().toISOString(); save(); render(); syncItem(isCase ? 'upsertCase' : 'upsertNote', item); return;
     }
@@ -740,7 +767,7 @@
     if (action === "search-notes") { state.noteSearch = document.getElementById("note-search")?.value || state.noteSearch; state.view = "notes"; render(); return; }
     if (action === "edit-case") { state.view = "form"; state.editingId = state.selectedId; state.pendingAttachments = []; state.pendingAttachmentsReady = false; render(); return; }
     if (action === "duplicate-case") { const original = getCase(); if (!original) return; const now = new Date().toISOString(); const copy = { ...original, id: uid(), title: `${original.title} (Bản sao)`, favorite: false, deleted: false, createdAt: now, updatedAt: now }; state.cases.unshift(copy); state.selectedId = copy.id; save(); render(); syncItem("upsertCase", copy); toast("Đã nhân bản case."); return; }
-    if (action === "delete-case") { const item = getCase(); if (!item) return; item.deleted = true; item.updatedAt = new Date().toISOString(); state.selectedId = activeCases()[0]?.id || null; save(); render(); syncItem("upsertCase", item); toast("Đã chuyển case vào thùng rác."); return; }
+    if (action === "delete-case") { const item = getCase(); if (!item) return; item.deleted = true; item.updatedAt = new Date().toISOString(); pruneLinkedReferences(item.id); state.selectedId = activeCases()[0]?.id || null; save(); render(); syncItem("upsertCase", item); toast("Đã chuyển case vào thùng rác."); return; }
     if (action === "search") { state.search = document.getElementById("case-search")?.value || document.getElementById("global-search")?.value || state.search; state.view = state.view === "search" ? "search" : "cases"; render(); return; }
     if (action === "export") { exportData(); return; }
     if (action === "import") { document.getElementById("settings-import")?.click(); return; }
@@ -762,6 +789,13 @@
   document.addEventListener("input", (event) => {
     if (event.target.id === "case-search" || event.target.id === "global-search") { state.search = event.target.value; const id = event.target.id; render(); focusSearch(id); }
     if (event.target.id === "note-search") { state.noteSearch = event.target.value; render(); focusSearch("note-search"); }
+    if (event.target.id === "related-search") {
+      const term = normalizeSearch(event.target.value.trim());
+      document.querySelectorAll("[data-related-option]").forEach(option => {
+        const selected = option.querySelector("[data-link-id]")?.checked;
+        option.hidden = term ? !option.dataset.search.includes(term) : !selected;
+      });
+    }
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.lightbox) { state.lightbox = null; render(); return; }
