@@ -175,10 +175,10 @@ const assert = require('node:assert/strict');
   await page.locator('[data-topic-color="#fff6d8"]').click();
   await page.locator('[contenteditable][data-rich-editor="symptoms"]').fill('Không mở được trang');
   const resolutionEditor = page.locator('[contenteditable][data-rich-editor="resolution"]');
-  await resolutionEditor.fill('Mở trang tham khảo');
-  await resolutionEditor.press('End');
-  await resolutionEditor.press('Enter');
-  await resolutionEditor.type('Kiểm tra kết nối');
+  await resolutionEditor.evaluate(node => {
+    node.innerHTML = '<div style="font-family:Arial">Mở trang tham khảo</div><div style="font-family:Arial">Kiểm tra kết nối</div>';
+    node.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertFromPaste', dataType:'text/html'}));
+  });
   await page.locator('#case-form button[type="submit"]').click();
   assert.match(await page.locator('.case-card').filter({hasText:'Case có URL'}).getAttribute('style'),/--topic-color:#fff6d8/i);
   await page.locator('[data-select-case]').filter({hasText:'Case có URL'}).dblclick();
