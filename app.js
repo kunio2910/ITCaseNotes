@@ -140,7 +140,7 @@
   function richEditor(id, label, value = "", placeholder = "") {
     const fonts = richFontFamilies.map(font => `<option value="${esc(font)}">${esc(font)}</option>`).join("");
     const sizes = Object.entries(richFontSizes).map(([key, size]) => `<option value="${key}">${size}</option>`).join("");
-    return `<div class="rich-field"><label>${label}</label><div class="rich-toolbar" data-toolbar-for="${id}" role="toolbar" aria-label="Định dạng ${esc(label)}"><button type="button" class="rich-tool" data-rich-command="bold" data-rich-editor="${id}" title="Đậm"><strong>B</strong></button><button type="button" class="rich-tool" data-rich-command="removeFormat" data-rich-editor="${id}" title="Chữ thường">Aa</button><button type="button" class="rich-tool" data-rich-command="italic" data-rich-editor="${id}" title="Nghiêng"><em>I</em></button><button type="button" class="rich-tool highlight-tool" data-rich-command="hiliteColor" data-rich-value="#fff3a3" data-rich-editor="${id}" title="Highlight">A</button><select class="rich-select" data-rich-command="fontName" data-rich-editor="${id}" aria-label="Font chữ"><option value="">Font chữ</option>${fonts}</select><select class="rich-select" data-rich-command="fontSize" data-rich-editor="${id}" aria-label="Cỡ chữ"><option value="">Cỡ chữ</option>${sizes}</select></div><div id="rich-${id}" class="rich-editor ${id === "resolution" ? "tall" : ""}" contenteditable="true" data-rich-editor="${id}" data-placeholder="${esc(placeholder)}" role="textbox" aria-multiline="true">${richHtml(value)}</div></div>`;
+    return `<div class="rich-field"><label>${label}</label><div class="rich-toolbar" data-toolbar-for="${id}" role="toolbar" aria-label="Định dạng ${esc(label)}"><button type="button" class="rich-tool" data-rich-command="bold" data-rich-editor="${id}" title="Đậm"><strong>B</strong></button><button type="button" class="rich-tool" data-rich-command="removeFormat" data-rich-editor="${id}" title="Chữ thường">Aa</button><button type="button" class="rich-tool" data-rich-command="italic" data-rich-editor="${id}" title="Nghiêng"><em>I</em></button><button type="button" class="rich-tool highlight-tool" data-rich-command="hiliteColor" data-rich-value="#fff3a3" data-rich-editor="${id}" title="Highlight">A</button><select class="rich-select" data-rich-command="fontName" data-rich-editor="${id}" aria-label="Font chữ"><option value="">Font chữ</option>${fonts}</select><select class="rich-select" data-rich-command="fontSize" data-rich-editor="${id}" aria-label="Cỡ chữ"><option value="">Cỡ chữ</option>${sizes}</select></div><div id="${id}" class="rich-editor ${id === "resolution" ? "tall" : ""}" contenteditable="true" data-rich-editor="${id}" data-placeholder="${esc(placeholder)}" role="textbox" aria-multiline="true">${richHtml(value)}</div></div>`;
   }
   const topicColorChoices = [{value:"#f5f3ff",label:"Tím"},{value:"#e8f1ff",label:"Xanh dương"},{value:"#e7f8ef",label:"Xanh lá"},{value:"#fff6d8",label:"Vàng"},{value:"#fff0df",label:"Cam"},{value:"#ffe8ec",label:"Đỏ"},{value:"#ffeafa",label:"Hồng"},{value:"#eef1f5",label:"Xám"}];
   function decorateRichEditors() {
@@ -211,7 +211,7 @@
     notes: Array.isArray(stored?.notes) ? stored.notes : seedNotes,
     categories: stored?.categories?.length ? stored.categories : defaultCategories,
     view: "cases", selectedId: stored?.cases?.find((item) => !item.deleted)?.id || seedCases[0].id, editingId: null, search: "", category: "Tất cả", status: "Tất cả", time: "Mới nhất",
-    noteSelectedId: stored?.notes?.find((item) => !item.deleted)?.id || seedNotes[0].id, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả",
+    noteSelectedId: stored?.notes?.find((item) => !item.deleted)?.id || seedNotes[0].id, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả", messageEditor: null, messagePopupId: null,
     theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], pendingAttachmentsReady: false, lightbox: null, cloudinaryOpen: false,
     categoryIcons: stored?.categoryIcons || {}, customTemplates: stored?.customTemplates ?? null, sortOrders: stored?.sortOrders || {}, purgedIds: new Set(stored?.purgedIds || []), formDraft: null, editor: null, richSelection: null
   };
@@ -633,7 +633,8 @@
   function messagesPage() {
     const items = state.notes.filter(item => item.kind === "message" && !item.deleted);
     const editing = state.messageEditor;
-    return `<section class="messages-page" aria-label="Lời nhắn"><div class="messages-toolbar"><span>${items.length} sổ note</span><button class="button primary" data-message-action="new">${icon("plus",16)} Thêm sổ note</button></div>${editing ? `<form id="message-form" class="panel message-form"><div class="field"><label for="message-title">Tiêu đề *</label><input class="input" id="message-title" required maxlength="200" value="${esc(editing.title)}" /></div><div class="field"><label for="message-content">Nội dung (không bắt buộc)</label><textarea class="textarea" id="message-content" rows="6">${esc(editing.content)}</textarea></div><div class="message-actions"><button class="button" type="button" data-message-action="cancel">Hủy</button><button class="button primary" type="submit">Lưu sổ note</button></div></form>` : ""}<div class="notebook-grid">${items.map(item => `<article class="notebook"><button class="notebook-cover" data-message-action="open" data-message-id="${esc(item.id)}"><span class="notebook-label">LỜI NHẮN</span><strong>${esc(item.title)}</strong>${item.content ? `<span class="notebook-excerpt">${esc(item.content)}</span>` : ""}<small>${formatDate(item.updatedAt)}</small></button><div class="message-actions"><button class="button small" data-message-action="edit" data-message-id="${esc(item.id)}">${icon("edit",14)} Sửa</button><button class="button small danger" data-message-action="delete" data-message-id="${esc(item.id)}">${icon("trash",14)} Xóa</button></div></article>`).join("") || '<div class="empty"><p>Chưa có lời nhắn. Tạo sổ note đầu tiên để ghi nhớ nhanh.</p></div>'}</div></section>`;
+    const popup = items.find(item => item.id === state.messagePopupId);
+    return `<section class="messages-page" aria-label="Lời nhắn"><div class="messages-toolbar"><span>${items.length} sổ note</span><button class="button primary" data-message-action="new">${icon("plus",16)} Thêm sổ note</button></div>${editing ? `<form id="message-form" class="panel message-form"><div class="field"><label for="message-title">Tiêu đề *</label><input class="input" id="message-title" required maxlength="200" value="${esc(editing.title)}" /></div><div class="field message-content-field">${richEditor("message-content", "Nội dung lời nhắn (không bắt buộc)", editing.content, "Nhập nội dung lời nhắn...")}</div><div class="message-actions"><button class="button" type="button" data-message-action="cancel">Hủy</button><button class="button primary" type="submit">Lưu sổ note</button></div></form>` : ""}<div class="notebook-grid">${items.map(item => `<article class="notebook"><button class="notebook-cover" data-message-action="open" data-message-id="${esc(item.id)}"><span class="notebook-label">LỜI NHẮN</span><strong>${esc(item.title)}</strong>${item.content ? `<span class="notebook-excerpt">${esc(richTextToPlain(item.content))}</span>` : ""}<small>${formatDate(item.updatedAt)}</small></button><div class="message-actions"><button class="button small" data-message-action="edit" data-message-id="${esc(item.id)}">${icon("edit",14)} Sửa</button><button class="button small danger" data-message-action="delete" data-message-id="${esc(item.id)}">${icon("trash",14)} Xóa</button></div></article>`).join("") || '<div class="empty"><p>Chưa có lời nhắn. Tạo sổ note đầu tiên để ghi nhớ nhanh.</p></div>'}</div>${popup ? `<div class="message-modal" role="dialog" aria-modal="true" aria-labelledby="message-modal-title"><div class="message-dialog" role="document"><button type="button" class="message-modal-close" aria-label="Đóng lời nhắn" data-message-popup-close>×</button><p class="notebook-label">LỜI NHẮN</p><h2 id="message-modal-title">${esc(popup.title)}</h2><div class="message-modal-content">${popup.content ? richDisplay(popup.content) : '<p class="subtle">Lời nhắn này chưa có nội dung.</p>'}</div><small class="message-modal-date">Cập nhật ${formatDateTime(popup.updatedAt)}</small></div></div>` : ""}</section>`;
   }
   function decorateCompactLayout() {
     state.reviewObserver?.disconnect();
@@ -947,6 +948,7 @@
     }
     const richTool = event.target.closest("[data-rich-command]");
     if (richTool?.tagName === "BUTTON") { runRichCommand(richTool.dataset.richEditor, richTool.dataset.richCommand, richTool.dataset.richValue || null); return; }
+    if (event.target.classList.contains("message-modal") || event.target.closest("[data-message-popup-close]")) { state.messagePopupId = null; render(); return; }
     const actionTarget = event.target.closest("[data-action]");
     const action = actionTarget?.dataset.action;
     const review = event.target.closest("[data-review-key]");
@@ -960,12 +962,13 @@
     if (messageButton) {
       const item = state.notes.find(entry => entry.kind === "message" && entry.id === messageButton.dataset.messageId);
       const operation = messageButton.dataset.messageAction;
-      if (operation === "new") state.messageEditor = {title:"", content:""};
+      if (operation === "new") { state.messageEditor = {title:"", content:""}; state.messagePopupId = null; }
       if (operation === "cancel") state.messageEditor = null;
-      if ((operation === "edit" || operation === "open") && item) state.messageEditor = {...item};
+      if (operation === "open" && item) { state.messagePopupId = item.id; state.messageEditor = null; }
+      if (operation === "edit" && item) { state.messageEditor = {...item}; state.messagePopupId = null; }
       if (operation === "delete" && item) {
         if (!confirm(`Xóa sổ note “${item.title}”?`)) return;
-        item.deleted = true; item.updatedAt = new Date().toISOString();
+        item.deleted = true; item.updatedAt = new Date().toISOString(); state.messagePopupId = null;
         if (state.messageEditor?.id === item.id) state.messageEditor = null;
         save(); syncItem("upsertNote", item); toast("Đã chuyển sổ note vào thùng rác.");
       }
@@ -1091,6 +1094,7 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.lightbox) { state.lightbox = null; render(); return; }
     if (event.key === "Escape" && state.cloudinaryOpen) { state.cloudinaryOpen = false; render(); return; }
+    if (event.key === "Escape" && state.messagePopupId) { state.messagePopupId = null; render(); return; }
     const actionTarget = event.target.closest("[data-action]");
     if ((event.key === "Enter" || event.key === " ") && actionTarget && ["toggle-case-favorite", "toggle-note-favorite", "open-image", "close-image"].includes(actionTarget.dataset.action)) { event.preventDefault(); actionTarget.click(); return; }
     if (event.target.closest(".tag-input")) parseTagsInput(event);
@@ -1117,7 +1121,7 @@
       if (!title) { toast("Vui lòng nhập tiêu đề sổ note.", "error"); return; }
       const now = new Date().toISOString();
       const previous = state.notes.find(item => item.kind === "message" && item.id === state.messageEditor?.id);
-      const item = {...previous, id:previous?.id || `message-${uid()}`, kind:"message", title, content:document.getElementById("message-content").value.trim(), category:"Lời nhắn", noteName:title, createdAt:previous?.createdAt || now, updatedAt:now, deleted:false, favorite:false, attachments:[]};
+      const item = {...previous, id:previous?.id || `message-${uid()}`, kind:"message", title, content:sanitizeRichHtml(formFieldValue("message-content")), category:"Lời nhắn", noteName:title, createdAt:previous?.createdAt || now, updatedAt:now, deleted:false, favorite:false, attachments:[]};
       if (previous) Object.assign(previous, item); else state.notes.unshift(item);
       state.messageEditor = null; save(); render(); syncItem("upsertNote", item); toast("Đã lưu sổ note."); return;
     }
