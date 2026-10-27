@@ -1,51 +1,11 @@
 (() => {
-  const STORAGE_KEY = "it-case-notes-v1";
+  const STORAGE_KEY = "it-case-notes-preferences-v1";
+  const LEGACY_STORAGE_KEY = "it-case-notes-v1";
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbztFNsgy97o330lkOpT9zEpGuk2brnA5d29lHa9J4d9lCl2HM-A9i1BahruAqiv8VEAVA/exec";
   const cloudState = { status: "Đang kết nối", syncing: false };
   const categoryColors = ["#287fd6", "#e89927", "#eb5d3f", "#7156c7", "#21a36d", "#3c526c", "#d34a8b", "#5c8c2f"];
   const DEFAULT_TOPIC_COLOR = "#f5f3ff";
 
-  const seedCases = [
-    {
-      id: "case-001", title: "Không thể Add Printer qua USB (Windows 11)", category: "Máy in", status: "Đã xử lý", device: "HP M211dw", os: "Windows 11 25H2",
-      symptoms: "Windows nhận diện thiết bị nhưng không thể Add Printer.\nThông báo lỗi: \"Unspecified\".",
-      cause: "Driver máy in cũ hoặc không tương thích với Windows 11 25H2.\nDịch vụ Print Spooler bị lỗi.\nCổng USB hoặc thiết bị không ổn định.",
-      resolution: "Kiểm tra thiết bị trong Device Manager.\nGỡ driver cũ, khởi động lại dịch vụ Print Spooler.\nCài driver đúng model (HP M211dw).\nKết nối lại USB và thêm máy in.\nIn thử trang test.",
-      commands: "Get-Service Spooler\nRestart-Service Spooler", result: "Đã cài được driver máy in và in test thành công.", tags: ["HP M2111", "USB", "Driver", "Windows 11"], favorite: true,
-      attachments: [{ name: "error-printer.png", src: "" }, { name: "device-manager.png", src: "" }], createdAt: "2026-10-20T09:15:00+07:00", updatedAt: "2026-10-22T10:45:00+07:00", deleted: false
-    },
-    {
-      id: "case-002", title: "Màn hình đen khi Enable Intel Graphics", category: "Windows", status: "Đã xử lý", device: "Laptop Dell", os: "Windows 11",
-      symptoms: "Sau logo BIOS màn hình đen, Safe Mode vào được.", cause: "Driver Intel Graphics bị lỗi sau Windows Update.", resolution: "Khởi động vào Safe Mode.\nDùng Display Driver Uninstaller để gỡ driver cũ.\nCài lại driver Intel Graphics từ trang hãng.", commands: "pnputil /enum-drivers", result: "Màn hình hiển thị ổn định sau khi cài driver chính hãng.", tags: ["Windows", "Intel", "VGA", "Driver"], favorite: false,
-      attachments: [], createdAt: "2026-10-18T14:20:00+07:00", updatedAt: "2026-10-21T08:10:00+07:00", deleted: false
-    },
-    {
-      id: "case-003", title: "Outlook không gửi được email", category: "Microsoft 365", status: "Đã xử lý", device: "Microsoft Outlook", os: "Windows 11",
-      symptoms: "Outlook báo lỗi SMTP Authentication Failed khi gửi email.", cause: "Tài khoản chưa bật xác thực hiện đại hoặc mật khẩu ứng dụng đã hết hạn.", resolution: "Kiểm tra trạng thái tài khoản Microsoft 365.\nXóa credential Outlook trong Windows Credential Manager.\nĐăng nhập lại và gửi email thử.", commands: "cmdkey /list", result: "Outlook gửi nhận email bình thường.", tags: ["Microsoft 365", "Outlook", "SMTP"], favorite: false,
-      attachments: [], createdAt: "2026-10-16T11:00:00+07:00", updatedAt: "2026-10-21T09:35:00+07:00", deleted: false
-    },
-    {
-      id: "case-004", title: "Không truy cập được SharePoint", category: "Mạng / Internet", status: "Đang xác minh", device: "Microsoft Edge", os: "Windows 11",
-      symptoms: "Báo lỗi bị nhận, không mở được trang SharePoint.", cause: "DNS nội bộ trả về địa chỉ cũ và phiên đăng nhập đã hết hạn.", resolution: "Xóa cache DNS.\nĐăng xuất rồi đăng nhập lại Microsoft 365.\nKiểm tra kết nối bằng trình duyệt ẩn danh.", commands: "ipconfig /flushdns", result: "Đang theo dõi thêm sau khi đổi DNS.", tags: ["Mạng / Internet", "SharePoint"], favorite: false,
-      attachments: [], createdAt: "2026-10-14T13:20:00+07:00", updatedAt: "2026-10-20T16:05:00+07:00", deleted: false
-    },
-    {
-      id: "case-005", title: "HP402 bị sai chiều lật giấy (Flip Over/Flip Up)", category: "Máy in", status: "Đã xử lý", device: "HP LaserJet Pro M402", os: "Windows 10",
-      symptoms: "Driver tự đảo chiều lật khi chọn in hai mặt.", cause: "Thiết lập duplex mặc định của driver bị sai.", resolution: "Mở Printing Preferences.\nChọn Flip Over cho tài liệu dọc.\nLưu cấu hình và in thử hai mặt.", commands: "control printers", result: "Bản in hai mặt đúng chiều mong muốn.", tags: ["Máy in", "HP402", "Duplex"], favorite: false,
-      attachments: [], createdAt: "2026-10-11T10:30:00+07:00", updatedAt: "2026-10-16T15:12:00+07:00", deleted: false
-    }
-  ];
-
-  const seedNotes = [
-    {
-      id: "note-001", title: "Kiểm tra và khởi động lại Print Spooler", category: "Windows", noteName: "Print Spooler", content: "Ghi nhớ nhanh các bước kiểm tra khi máy in không nhận lệnh in hoặc bị treo hàng đợi.", commands: "Get-Service Spooler\nRestart-Service Spooler", result: "Dịch vụ chạy lại bình thường, có thể tiếp tục kiểm tra driver nếu lỗi còn tiếp diễn.", tags: ["Print Spooler", "Máy in"], favorite: false, attachments: [], createdAt: "2026-10-21T08:30:00+07:00", updatedAt: "2026-10-22T09:15:00+07:00", deleted: false
-    },
-    {
-      id: "note-002", title: "Làm sạch DNS trên máy người dùng", category: "Mạng / Internet", noteName: "DNS nhanh", content: "Dùng khi người dùng không truy cập được website hoặc dịch vụ nội bộ sau khi thay đổi mạng.", commands: "ipconfig /flushdns\nipconfig /renew", result: "Kiểm tra lại bằng trình duyệt ẩn danh sau khi chạy lệnh.", tags: ["DNS", "Mạng"], favorite: false, attachments: [], createdAt: "2026-10-19T14:10:00+07:00", updatedAt: "2026-10-19T14:10:00+07:00", deleted: false
-    }
-  ];
-
-  const defaultCategories = ["Windows", "Máy in", "Microsoft 365", "Mạng / Internet", "Phần cứng", "Bảo mật", "Phần mềm", "Khác"];
   const iconPaths = {
     book: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/><path d="M4 5.5V21.5A2.5 2.5 0 0 1 6.5 19H20M8 7h8M8 11h8"/>',
     grid: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
@@ -128,12 +88,18 @@
     return wrapper.innerHTML;
   }
   function hasRichMarkup(value = "") { return /<\/?(a|b|br|div|em|font|i|li|mark|ol|p|span|strong|u|ul)(\s|>)/i.test(String(value)); }
+  function hasRichFormatting(value = "") {
+    if (!hasRichMarkup(value)) return false;
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = String(value);
+    return Boolean(wrapper.querySelector("a,b,strong,i,em,mark,font,ol,ul,[style]"));
+  }
   function richHtml(value = "") { return hasRichMarkup(value) ? sanitizeRichHtml(value) : esc(value).replace(/\r?\n/g, "<br>"); }
   function richTextToPlain(value = "") {
     const wrapper = document.createElement("div");
     wrapper.innerHTML = richHtml(value);
     wrapper.querySelectorAll("br").forEach(node => node.replaceWith(document.createTextNode("\n")));
-    wrapper.querySelectorAll("div,p,li").forEach(node => node.appendChild(document.createTextNode("\n")));
+    wrapper.querySelectorAll("div,p,li").forEach(node => { node.insertBefore(document.createTextNode("\n"), node.firstChild); node.appendChild(document.createTextNode("\n")); });
     return (wrapper.textContent || "").replace(/\u00a0/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
   function richDisplay(value = "") { return `<div class="rich-text">${richHtml(value)}</div>`; }
@@ -205,18 +171,17 @@
   const getStored = () => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch { return null; }
   };
-  const stored = getStored();
+  const stored = getStored() || {};
+  try { localStorage.removeItem(LEGACY_STORAGE_KEY); } catch {}
   const state = {
-    cases: stored?.cases?.length ? stored.cases : seedCases,
-    notes: Array.isArray(stored?.notes) ? stored.notes : seedNotes,
-    categories: stored?.categories?.length ? stored.categories : defaultCategories,
-    view: "cases", selectedId: stored?.cases?.find((item) => !item.deleted)?.id || seedCases[0].id, editingId: null, search: "", category: "Tất cả", status: "Tất cả", time: "Mới nhất",
-    noteSelectedId: stored?.notes?.find((item) => !item.deleted)?.id || seedNotes[0].id, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả", messageEditor: null, messagePopupId: null,
+    cases: [], notes: [], categories: [],
+    view: "cases", selectedId: null, editingId: null, search: "", category: "Tất cả", status: "Tất cả", time: "Mới nhất",
+    noteSelectedId: null, noteEditingId: null, noteSearch: "", noteCategory: "Tất cả", messageEditor: null, messagePopupId: null,
     theme: stored?.theme || "light", pageSize: stored?.pageSize || "20", pendingAttachments: [], pendingAttachmentsReady: false, lightbox: null, cloudinaryOpen: false,
-    categoryIcons: stored?.categoryIcons || {}, customTemplates: stored?.customTemplates ?? null, sortOrders: stored?.sortOrders || {}, purgedIds: new Set(stored?.purgedIds || []), formDraft: null, editor: null, richSelection: null
+    categoryIcons: {}, customTemplates: null, sortOrders: stored?.sortOrders || {}, purgedIds: new Set(), formDraft: null, editor: null, richSelection: null
   };
 
-  const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ cases: state.cases, notes: state.notes, categories: state.categories, theme: state.theme, pageSize: state.pageSize, categoryIcons:state.categoryIcons, customTemplates:state.customTemplates, sortOrders:state.sortOrders, purgedIds:[...state.purgedIds] }));
+  const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ theme: state.theme, pageSize: state.pageSize, sortOrders: state.sortOrders }));
   async function cloudRequest(payload) {
     if (!APPS_SCRIPT_URL) return null;
     // Keep extended fields in a versioned envelope supported by the existing Sheet schema.
@@ -266,14 +231,23 @@
         const configuration = state.notes.find(item => item.id === "itcn-settings-v1")?.configuration;
         if (configuration) { state.categoryIcons = configuration.categoryIcons || {}; state.customTemplates = configuration.templates ?? null; }
         state.notes = state.notes.filter(item => item.id !== "itcn-settings-v1");
-        state.categories = configuration?.categories?.length ? configuration.categories : remote.categories?.length ? remote.categories : defaultCategories;
+        state.categories = configuration?.categories?.length ? configuration.categories : Array.isArray(remote.categories) ? remote.categories : [];
         state.selectedId = state.cases.find((item) => !item.deleted)?.id || null;
         state.noteSelectedId = state.notes.find((item) => !item.deleted)?.id || null;
         save(); render();
         updateSync("Đã tải từ Google Sheet");
       } else {
-        await syncAllToCloud();
-        toast("Đã đưa dữ liệu mẫu lên Google Sheet.");
+        state.cases = [];
+        state.notes = [];
+        state.categories = Array.isArray(remote.categories) ? remote.categories : [];
+        state.selectedId = null;
+        state.noteSelectedId = null;
+        state.categoryIcons = {};
+        state.customTemplates = null;
+        save();
+        render();
+        updateSync("Google Sheet chưa có dữ liệu");
+        toast("Google Sheet chưa có dữ liệu.");
       }
     } catch (error) {
       updateSync("Ngoại tuyến · Dữ liệu trên thiết bị");
@@ -380,14 +354,15 @@
 
   function detailPanel(item) {
     if (!item) return `<div id="case-detail-panel" class="panel detail-panel empty" tabindex="-1"><div><div class="empty-icon">${icon("book", 26)}</div><h2>Chọn một case để xem</h2><p>Danh sách case và nội dung xử lý sẽ hiển thị tại đây.</p></div></div>`;
-    const steps = (item.resolution || "").split("\n").map((step) => step.trim()).filter(Boolean);
+    const resolutionText = richTextToPlain(item.resolution);
+    const steps = resolutionText.split(/\n+/).map((step) => step.trim()).filter(Boolean);
     return `<article id="case-detail-panel" class="panel detail-panel" tabindex="-1">
       <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 21)}</span><div><h2>${esc(item.title)}</h2>${tags(item.tags)}</div></div>
         <div class="detail-actions"><button class="button small" data-action="edit-case">${icon("edit", 14)} Chỉnh sửa</button><button class="button small" data-action="duplicate-case">${icon("copy", 14)} Nhân bản</button><button class="button small danger" data-action="delete-case">${icon("trash", 14)} Xóa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Thiết bị / Phần mềm</label><strong>${esc(item.device || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Hệ điều hành</label><strong>${esc(item.os || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Trạng thái</label><strong>${esc(item.status)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
       ${richTextToPlain(item.symptoms) ? detailSection("symptom", "Triệu chứng", richDisplay(item.symptoms), "alert") : ""}
       ${richTextToPlain(item.cause) ? detailSection("cause", "Nguyên nhân", richDisplay(item.cause), "help") : ""}
-      ${richTextToPlain(item.resolution) || item.commands?.trim() ? detailSection("resolution", "Các bước xử lý", `${hasRichMarkup(item.resolution) ? richDisplay(item.resolution) : (steps.length ? `<ol class="steps">${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>` : "")}${item.commands?.trim() ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check") : ""}
+      ${resolutionText || item.commands?.trim() ? detailSection("resolution", "Các bước xử lý", `${hasRichFormatting(item.resolution) ? richDisplay(item.resolution) : (steps.length ? `<ol class="steps">${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>` : "")}${item.commands?.trim() ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check") : ""}
       ${richTextToPlain(item.result) || item.attachments?.length ? detailSection("result", "Kết quả / Ghi chú", `${richTextToPlain(item.result) ? richDisplay(item.result) : ""}${attachmentsMarkup(item.attachments || [])}`, "info") : ""}
     </article>`;
   }

@@ -6,7 +6,17 @@ const assert = require('node:assert/strict');
   const page = await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[]; page.on('pageerror', error => errors.push(error.message));
   await page.route('https://itcn.test/**', route => route.fulfill({body:'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app" class="app-shell"></div><div id="toast-region"></div></body></html>'}));
-  const cloud = {cases:new Map(),notes:new Map(),categories:new Set()};
+  const cloud = {cases:new Map(),notes:new Map(),categories:new Set(['Windows','Máy in','Microsoft 365','Mạng / Internet','Phần cứng','Bảo mật','Phần mềm','Khác'])};
+  const makeCase = (id,title,category,resolution) => ({id,title,category,status:'Đã xử lý',device:'Thiết bị thử nghiệm',os:'Windows 11',symptoms:'Có lỗi cần kiểm tra.',cause:'Nguyên nhân thử nghiệm.',resolution,commands:'',result:'Đã xử lý xong.',tags:[category],favorite:false,attachments:[],createdAt:'2026-10-20T09:15:00+07:00',updatedAt:'2026-10-22T10:45:00+07:00',deleted:false});
+  [
+    makeCase('case-001','Không thể Add Printer qua USB','Máy in','Kiểm tra kết nối.\nCài lại driver.'),
+    makeCase('case-002','Màn hình đen khi Enable Intel Graphics','Windows','Khởi động vào Safe Mode.\nCài lại driver.'),
+    makeCase('case-003','Outlook không gửi được email','Microsoft 365','Kiểm tra tài khoản.\nGửi email thử.'),
+    makeCase('case-004','Không truy cập được SharePoint','Mạng / Internet','Xóa cache DNS.\nĐăng nhập lại.'),
+    makeCase('case-005','HP402 bị sai chiều lật giấy','Máy in','Mở Printing Preferences.\nIn thử hai mặt.')
+  ].forEach(item => cloud.cases.set(item.id,item));
+  cloud.notes.set('note-001',{id:'note-001',kind:'note',title:'Kiểm tra và khởi động lại Print Spooler',category:'Windows',noteName:'Print Spooler',content:'Ghi nhớ nhanh các bước xử lý.',commands:'Get-Service Spooler',result:'Dịch vụ chạy bình thường.',tags:['Print Spooler','Máy in'],favorite:false,attachments:[],createdAt:'2026-10-21T08:30:00+07:00',updatedAt:'2026-10-22T09:15:00+07:00',deleted:false});
+  cloud.notes.set('note-002',{id:'note-002',kind:'note',title:'Làm sạch DNS trên máy người dùng',category:'Mạng / Internet',noteName:'DNS nhanh',content:'Kiểm tra DNS khi không truy cập được website.',commands:'ipconfig /flushdns',result:'Kiểm tra lại bằng trình duyệt.',tags:['DNS','Mạng'],favorite:false,attachments:[],createdAt:'2026-10-19T14:10:00+07:00',updatedAt:'2026-10-19T14:10:00+07:00',deleted:false});
   await page.route('https://script.google.com/**', route => {
     const payload=JSON.parse(route.request().postData());
     if(payload.action === 'upsertCase') cloud.cases.set(payload.item.id,payload.item);
@@ -18,6 +28,9 @@ const assert = require('node:assert/strict');
   await page.addScriptTag({path:path.resolve(__dirname,'../app.js')});
   await page.addStyleTag({path:path.resolve(__dirname,'../styles.css')});
   await page.addStyleTag({path:path.resolve(__dirname,'../modern.css')});
+  assert.equal(await page.evaluate(() => localStorage.getItem('it-case-notes-v1')),null);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('it-case-notes-preferences-v1') || '{}').cases),undefined);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('it-case-notes-preferences-v1') || '{}').notes),undefined);
   assert.equal(await page.locator('.page-heading').count(),0);
   assert.equal(await page.locator('#case-detail-panel [data-action="add-case"]').count(),1);
   await page.locator('[data-review-key="cases"]').click();
@@ -161,10 +174,15 @@ const assert = require('node:assert/strict');
   await page.locator('#title').fill('Case có URL');
   await page.locator('[data-topic-color="#fff6d8"]').click();
   await page.locator('[contenteditable][data-rich-editor="symptoms"]').fill('Không mở được trang');
-  await page.locator('[contenteditable][data-rich-editor="resolution"]').fill('Mở trang tham khảo');
+  const resolutionEditor = page.locator('[contenteditable][data-rich-editor="resolution"]');
+  await resolutionEditor.fill('Mở trang tham khảo');
+  await resolutionEditor.press('End');
+  await resolutionEditor.press('Enter');
+  await resolutionEditor.type('Kiểm tra kết nối');
   await page.locator('#case-form button[type="submit"]').click();
   assert.match(await page.locator('.case-card').filter({hasText:'Case có URL'}).getAttribute('style'),/--topic-color:#fff6d8/i);
-  await page.locator('[data-select-case]').first().dblclick();
+  await page.locator('[data-select-case]').filter({hasText:'Case có URL'}).dblclick();
+  assert.equal(await page.locator('#case-detail-panel .steps input[type="checkbox"]').count(),2);
   assert.equal(await page.locator('#case-detail-panel .reference-panel').count(),1);
   await page.locator('[data-view="cases"]').click();
   await page.locator('[data-action="add-case"]').click();
