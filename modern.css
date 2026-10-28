@@ -289,6 +289,66 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
   .attachment-url-row { grid-template-columns: minmax(0, 1fr) minmax(130px, auto); }
   .attachment-url-row input { grid-column: 1 / -1; }
 }
+
+/* Topic cards: make the hovered and selected item feel lifted without shifting the layout. */
+.case-card,
+.search-result,
+.search-hit {
+  transform: translateZ(0);
+  transition: transform .18s cubic-bezier(.2,.7,.2,1), box-shadow .18s ease, border-color .18s ease, background .18s ease;
+  will-change: transform;
+}
+.search-result,
+.search-hit { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  .case-card:hover,
+  .search-result:hover,
+  .search-hit:hover {
+    transform: translateY(-4px);
+    border-color: #aaa0ed;
+    box-shadow: 0 15px 30px #252a431c, 0 0 0 3px #6255d90b;
+    z-index: 2;
+  }
+}
+.case-card.selected {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--topic-color, #8273e5) 62%, var(--line));
+  box-shadow: 0 13px 28px #252a431c, inset 4px 0 var(--topic-color, #8273e5), inset 0 0 0 1px color-mix(in srgb, var(--topic-color, #8273e5) 55%, transparent);
+  z-index: 3;
+}
+.case-card:focus-visible,
+.search-result:focus-visible,
+.search-hit:focus-visible {
+  position: relative;
+  border-color: #6255d9;
+  box-shadow: 0 13px 28px #252a431c, 0 0 0 4px #6255d934;
+  z-index: 4;
+}
+[data-theme="dark"] .case-card:hover,
+[data-theme="dark"] .search-result:hover,
+[data-theme="dark"] .search-hit:hover {
+  border-color: #7d70d7;
+  box-shadow: 0 15px 30px #00000045, 0 0 0 3px #9a8fff18;
+}
+[data-theme="dark"] .case-card.selected {
+  border-color: color-mix(in srgb, var(--topic-color, #8273e5) 62%, var(--line));
+  box-shadow: 0 13px 28px #00000045, inset 4px 0 var(--topic-color, #8273e5), inset 0 0 0 1px color-mix(in srgb, var(--topic-color, #8273e5) 55%, transparent);
+}
+@media (hover: none), (pointer: coarse) {
+  .case-card:active,
+  .search-result:active,
+  .search-hit:active {
+    transform: scale(.992);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .case-card:hover,
+  .case-card.selected,
+  .search-result:hover,
+  .search-hit:hover {
+    transform: none;
+  }
+}
 @media(max-width:820px) {
   .attachment-url-row { grid-template-columns: 1fr 1fr; }
   .attachment-url-row input { grid-column: 1 / -1; }
