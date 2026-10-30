@@ -277,6 +277,12 @@ const assert = require('node:assert/strict');
   await page.locator('.note-card').dblclick();
   assert.equal(await page.locator('[data-action="embed-reference"]').getAttribute('data-url'),'https://example.com/guide');
   assert.deepEqual(errors,[]);
-  console.log('PASS: workspace features, six sort modes, badge placement, reference embedding, category icons, template CRUD/apply, cloud round-trip, mobile layout');
+  await page.locator('[data-view="settings"]').click();
+  assert.equal(await page.locator('[data-delete-trash-case],[data-delete-trash-note]').count(),0, 'Permanently deleted items must stay absent after reload');
+  for (const item of [...cloud.cases.values(), ...cloud.notes.values()].filter(item => item.attachments?.some(file => file.kind === 'purged'))) {
+    assert.equal(item.title, '');
+    assert.equal(item.content || item.resolution || '', '');
+  }
+  console.log('PASS: workspace features, six sort modes, badge placement, reference embedding, category icons, template CRUD/apply, cloud round-trip, mobile layout, permanent trash deletion after reload');
   await browser.close();
 })().catch(error => {console.error(error);process.exit(1);});

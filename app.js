@@ -193,6 +193,7 @@
     return result;
   }
   const pendingSync = new Map();
+  const syncQueues = new Map();
   function updateSync(status) {
     cloudState.status = status;
     if (status === "Đã đồng bộ" || status === "Đã tải từ Google Sheet") cloudState.lastSync = new Date();
@@ -200,11 +201,13 @@
   }
   function syncItem(action, item) {
     if (!APPS_SCRIPT_URL || !item) return;
-    const payload = action === "upsertCategory" ? { action, name: item.name } : { action, item };
+    const payload = action === "upsertCategory" ? { action, name: item.name } : { action, item: JSON.parse(JSON.stringify(item)) };
     const key = `${action}:${item.id || item.name}`;
     pendingSync.set(key, payload);
     updateSync("Đã lưu trên thiết bị · Đang đồng bộ");
-    cloudRequest(payload).then(() => { if (pendingSync.get(key) === payload) pendingSync.delete(key); updateSync(pendingSync.size ? "Còn thay đổi chờ đồng bộ" : "Đã đồng bộ"); }).catch((error) => { updateSync("Lỗi đồng bộ · Có thể thử lại"); console.error(error); toast(`Không thể đồng bộ Google Sheet: ${error.message}`, "error"); });
+    const request = (syncQueues.get(key) || Promise.resolve()).catch(() => {}).then(() => cloudRequest(payload));
+    syncQueues.set(key, request);
+    request.then(() => { if (pendingSync.get(key) === payload) pendingSync.delete(key); updateSync(pendingSync.size ? "Còn thay đổi chờ đồng bộ" : "Đã đồng bộ"); }).catch((error) => { updateSync("Lỗi đồng bộ · Có thể thử lại"); console.error(error); toast(`Không thể đồng bộ Google Sheet: ${error.message}`, "error"); }).finally(() => { if (syncQueues.get(key) === request) syncQueues.delete(key); });
   }
   async function syncAllToCloud() {
     cloudState.syncing = true;
@@ -226,8 +229,8 @@
       const remote = result?.data || {};
       const hasRemoteData = Boolean(remote.cases?.length || remote.notes?.length || remote.categories?.length);
       if (hasRemoteData) {
-        state.cases = Array.isArray(remote.cases) ? remote.cases.map(decodeExtendedItem).filter(item => !state.purgedIds.has(item.id)) : [];
-        state.notes = Array.isArray(remote.notes) ? remote.notes.map(decodeExtendedItem).filter(item => !state.purgedIds.has(item.id)) : [];
+        state.cases = Array.isArray(remote.cases) ? remote.cases.map(decodeExtendedItem).filter(item => item.kind !== "purged" && !state.purgedIds.has(item.id)) : [];
+        state.notes = Array.isArray(remote.notes) ? remote.notes.map(decodeExtendedItem).filter(item => item.kind !== "purged" && !state.purgedIds.has(item.id)) : [];
         const configuration = state.notes.find(item => item.id === "itcn-settings-v1")?.configuration;
         if (configuration) { state.categoryIcons = configuration.categoryIcons || {}; state.customTemplates = configuration.templates ?? null; }
         state.notes = state.notes.filter(item => item.id !== "itcn-settings-v1");
@@ -485,6 +488,7 @@
   }
   function decodeExtendedItem(item) {
     const metadata = (item.attachments || []).find(file => file.type === "itcn-metadata");
+    if (metadata?.kind === "purged") return {id:item.id, kind:"purged", deleted:true};
     const isCase = Boolean(item.status || item.symptoms || item.resolution);
     return {...item, ...(metadata ? {kind:metadata.kind, verifiedAt:isCase ? metadata.verifiedAt : null, linkedIds:metadata.linkedIds, referenceUrl:metadata.referenceUrl || "", color:safeTopicColor(metadata.color || item.color), tags:metadata.tags || item.tags || [], configuration:metadata.configuration} : {color:safeTopicColor(item.color), tags:item.tags || []}), attachments:(item.attachments || []).filter(file => file.type !== "itcn-metadata")};
   }
@@ -884,13 +888,17 @@
     state.noteSelectedId = activeNotes()[0]?.id || null; state.view = "notes"; save(); render(); syncItem("upsertNote", item); toast("Đã chuyển ghi chú vào thùng rác.");
   }
 
+  function trashTombstone(item) {
+    return {id:item.id, kind:"purged", deleted:true, title:"", category:"", status:"", device:"", os:"", symptoms:"", cause:"", resolution:"", commands:"", result:"", noteName:"", content:"", tags:[], attachments:[], linkedIds:[], referenceUrl:"", favorite:false, createdAt:item.createdAt, updatedAt:new Date().toISOString()};
+  }
+
   function permanentlyDeleteTrash(type, id) {
     const collection = type === "case" ? state.cases : state.notes;
     const item = collection.find(entry => entry.id === id && entry.deleted);
     if (!item) return;
     state.purgedIds.add(id);
     pruneLinkedReferences(id);
-    syncItem(type === "case" ? "upsertCase" : "upsertNote", item);
+    syncItem(type === "case" ? "upsertCase" : "upsertNote", trashTombstone(item));
     if (type === "case") state.cases = state.cases.filter(entry => entry.id !== id);
     else state.notes = state.notes.filter(entry => entry.id !== id);
     if (state.selectedId === id) state.selectedId = activeCases()[0]?.id || null;
@@ -902,8 +910,8 @@
     const deletedCases = state.cases.filter(item => item.deleted);
     const deletedNotes = state.notes.filter(item => item.deleted);
     if (!deletedCases.length && !deletedNotes.length) return;
-    for (const item of deletedCases) { state.purgedIds.add(item.id); pruneLinkedReferences(item.id); syncItem("upsertCase", item); }
-    for (const item of deletedNotes) { state.purgedIds.add(item.id); pruneLinkedReferences(item.id); syncItem("upsertNote", item); }
+    for (const item of deletedCases) { state.purgedIds.add(item.id); pruneLinkedReferences(item.id); syncItem("upsertCase", trashTombstone(item)); }
+    for (const item of deletedNotes) { state.purgedIds.add(item.id); pruneLinkedReferences(item.id); syncItem("upsertNote", trashTombstone(item)); }
     state.cases = state.cases.filter(item => !item.deleted);
     state.notes = state.notes.filter(item => !item.deleted);
     state.selectedId = activeCases()[0]?.id || null;
