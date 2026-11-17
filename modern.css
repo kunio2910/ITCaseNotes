@@ -365,7 +365,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .rich-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 7px; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--surface-2); }
 .rich-tool { display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--surface); cursor: pointer; font-size: 13px; }
 .rich-tool:hover { border-color: #9c90ef; color: var(--blue-700); background: var(--blue-050); }
-.highlight-tool { background: #fff3a3; }
+.highlight-tool { background: var(--surface); }
+.highlight-tool[aria-pressed="true"], .highlight-tool.is-active { color: #5d4b00; border-color: #d7b52c; background: #fff3a3; box-shadow: 0 0 0 2px #fff3a366; }
 .rich-select { height: 32px; max-width: 150px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--surface); font-size: 12px; }
 .rich-editor { min-height: 112px; padding: 12px; border: 1px solid var(--line); border-radius: 0 0 10px 10px; color: var(--ink); background: var(--surface); font-size: 14px; line-height: 1.75; outline: 0; overflow-wrap: anywhere; }
 .rich-editor.tall { min-height: 170px; }
@@ -403,6 +404,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 }
 [data-theme="dark"] .rich-toolbar { background: #1c2940; }
 [data-theme="dark"] .rich-tool, [data-theme="dark"] .rich-select, [data-theme="dark"] .rich-editor, [data-theme="dark"] .topic-swatch { color: #e4ecfa; background: #111e30; }
+[data-theme="dark"] .highlight-tool[aria-pressed="true"], [data-theme="dark"] .highlight-tool.is-active { color: #2b2500; background: #fff3a3; }
 @media(max-width:560px) {
   .rich-select { max-width: 140px; flex: 1 1 130px; }
   .attachment-url-row { grid-template-columns: minmax(0, 1fr) auto; }

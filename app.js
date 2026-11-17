@@ -102,11 +102,18 @@
     wrapper.querySelectorAll("div,p,li").forEach(node => { node.insertBefore(document.createTextNode("\n"), node.firstChild); node.appendChild(document.createTextNode("\n")); });
     return (wrapper.textContent || "").replace(/\u00a0/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
+  function richStepHtml(value = "") {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = richHtml(value);
+    const blockNodes = [...wrapper.children].filter(node => /^(DIV|P|LI)$/i.test(node.tagName));
+    if (blockNodes.length) return blockNodes.map(node => sanitizeRichHtml(node.innerHTML)).filter(part => richTextToPlain(part)).map(part => part.trim());
+    return wrapper.innerHTML.split(/<br\s*\/?>(?:\s*)/i).map(part => sanitizeRichHtml(part)).filter(part => richTextToPlain(part)).map(part => part.trim());
+  }
   function richDisplay(value = "") { return `<div class="rich-text">${richHtml(value)}</div>`; }
   function richEditor(id, label, value = "", placeholder = "") {
     const fonts = richFontFamilies.map(font => `<option value="${esc(font)}">${esc(font)}</option>`).join("");
     const sizes = Object.entries(richFontSizes).map(([key, size]) => `<option value="${key}">${size}</option>`).join("");
-    return `<div class="rich-field"><label>${label}</label><div class="rich-toolbar" data-toolbar-for="${id}" role="toolbar" aria-label="Định dạng ${esc(label)}"><button type="button" class="rich-tool" data-rich-command="bold" data-rich-editor="${id}" title="Đậm"><strong>B</strong></button><button type="button" class="rich-tool" data-rich-command="removeFormat" data-rich-editor="${id}" title="Chữ thường">Aa</button><button type="button" class="rich-tool" data-rich-command="italic" data-rich-editor="${id}" title="Nghiêng"><em>I</em></button><button type="button" class="rich-tool highlight-tool" data-rich-command="hiliteColor" data-rich-value="#fff3a3" data-rich-editor="${id}" title="Highlight">A</button><select class="rich-select" data-rich-command="fontName" data-rich-editor="${id}" aria-label="Font chữ"><option value="">Font chữ</option>${fonts}</select><select class="rich-select" data-rich-command="fontSize" data-rich-editor="${id}" aria-label="Cỡ chữ"><option value="">Cỡ chữ</option>${sizes}</select></div><div id="${id}" class="rich-editor ${id === "resolution" ? "tall" : ""}" contenteditable="true" data-rich-editor="${id}" data-placeholder="${esc(placeholder)}" role="textbox" aria-multiline="true">${richHtml(value)}</div></div>`;
+    return `<div class="rich-field"><label>${label}</label><div class="rich-toolbar" data-toolbar-for="${id}" role="toolbar" aria-label="Định dạng ${esc(label)}"><button type="button" class="rich-tool" data-rich-command="bold" data-rich-editor="${id}" title="Đậm"><strong>B</strong></button><button type="button" class="rich-tool" data-rich-command="removeFormat" data-rich-editor="${id}" title="Chữ thường">Aa</button><button type="button" class="rich-tool" data-rich-command="italic" data-rich-editor="${id}" title="Nghiêng"><em>I</em></button><button type="button" class="rich-tool highlight-tool" aria-pressed="false" data-rich-command="hiliteColor" data-rich-value="#fff3a3" data-rich-editor="${id}" title="Highlight">A</button><select class="rich-select" data-rich-command="fontName" data-rich-editor="${id}" aria-label="Font chữ"><option value="">Font chữ</option>${fonts}</select><select class="rich-select" data-rich-command="fontSize" data-rich-editor="${id}" aria-label="Cỡ chữ"><option value="">Cỡ chữ</option>${sizes}</select></div><div id="${id}" class="rich-editor ${id === "resolution" ? "tall" : ""}" contenteditable="true" data-rich-editor="${id}" data-placeholder="${esc(placeholder)}" role="textbox" aria-multiline="true">${richHtml(value)}</div></div>`;
   }
   const topicColorChoices = [{value:"#f5f3ff",label:"Tím"},{value:"#e8f1ff",label:"Xanh dương"},{value:"#e7f8ef",label:"Xanh lá"},{value:"#fff6d8",label:"Vàng"},{value:"#fff0df",label:"Cam"},{value:"#ffe8ec",label:"Đỏ"},{value:"#ffeafa",label:"Hồng"},{value:"#eef1f5",label:"Xám"}];
   function decorateRichEditors() {
@@ -359,13 +366,14 @@
     if (!item) return `<div id="case-detail-panel" class="panel detail-panel empty" tabindex="-1"><div><div class="empty-icon">${icon("book", 26)}</div><h2>Chọn một case để xem</h2><p>Danh sách case và nội dung xử lý sẽ hiển thị tại đây.</p></div></div>`;
     const resolutionText = richTextToPlain(item.resolution);
     const steps = resolutionText.split(/\n+/).map((step) => step.trim()).filter(Boolean);
+    const richSteps = richStepHtml(item.resolution);
     return `<article id="case-detail-panel" class="panel detail-panel" tabindex="-1">
       <div class="detail-top"><div class="detail-title"><span class="case-icon">${icon(item.category === "Máy in" ? "printer" : "windows", 21)}</span><div><h2>${esc(item.title)}</h2>${tags(item.tags)}</div></div>
         <div class="detail-actions"><button class="button small" data-action="edit-case">${icon("edit", 14)} Chỉnh sửa</button><button class="button small" data-action="duplicate-case">${icon("copy", 14)} Nhân bản</button><button class="button small danger" data-action="delete-case">${icon("trash", 14)} Xóa</button></div></div>
       <div class="info-grid"><div class="info-item"><label>Thiết bị / Phần mềm</label><strong>${esc(item.device || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Hệ điều hành</label><strong>${esc(item.os || "Chưa cập nhật")}</strong></div><div class="info-item"><label>Trạng thái</label><strong>${esc(item.status)}</strong></div><div class="info-item"><label>Cập nhật</label><strong>${formatDateTime(item.updatedAt)}</strong></div></div>
       ${richTextToPlain(item.symptoms) ? detailSection("symptom", "Triệu chứng", richDisplay(item.symptoms), "alert") : ""}
       ${richTextToPlain(item.cause) ? detailSection("cause", "Nguyên nhân", richDisplay(item.cause), "help") : ""}
-      ${resolutionText || item.commands?.trim() ? detailSection("resolution", "Các bước xử lý", `${steps.length > 1 || (steps.length && !hasRichFormatting(item.resolution)) ? `<ol class="steps">${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>` : (resolutionText ? richDisplay(item.resolution) : "")}${item.commands?.trim() ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check") : ""}
+      ${resolutionText || item.commands?.trim() ? detailSection("resolution", "Các bước xử lý", `${steps.length > 1 || (steps.length && !hasRichFormatting(item.resolution)) ? `<ol class="steps">${(richSteps.length ? richSteps : steps.map(step => esc(step))).map(step => `<li>${richSteps.length ? step : esc(step)}</li>`).join("")}</ol>` : (resolutionText ? richDisplay(item.resolution) : "")}${item.commands?.trim() ? `<pre class="code-block"><button class="copy-code" data-copy-code="${esc(item.commands)}" title="Sao chép">${icon("copy", 14)}</button>${esc(item.commands)}</pre>` : ""}`, "check") : ""}
       ${richTextToPlain(item.result) || item.attachments?.length ? detailSection("result", "Kết quả / Ghi chú", `${richTextToPlain(item.result) ? richDisplay(item.result) : ""}${attachmentsMarkup(item.attachments || [])}`, "info") : ""}
     </article>`;
   }
@@ -597,7 +605,7 @@
     document.querySelector("#app").innerHTML = `${renderSidebar()}<main class="main"><div class="utility-bar"><button class="button" data-view="search">${icon("search", 16)} Tìm case & ghi chú</button><div class="sync-status" role="status"><span class="sync-label">${esc(cloudState.status)}${cloudState.lastSync ? ` · ${cloudState.lastSync.toLocaleTimeString("vi-VN")}` : ""}</span><button class="button small" data-action="retry-sync">Thử lại</button></div></div>${state.view === "search" ? unifiedSearchPage() : page}</main>${imageLightbox()}${cloudinaryPopup()}`;
     document.querySelectorAll(".code-block").forEach(node => { const value = node.querySelector("[data-copy-code]")?.dataset.copyCode; if (value) node.outerHTML = commandPanel(value); });
     document.querySelectorAll('#note-detail-panel .detail-actions [data-action="toggle-note-favorite"]').forEach(node => node.remove());
-    document.querySelectorAll(".steps li").forEach(node => { const text = node.textContent.replace(/^\s*\d+[.)\s-]+/, ""); node.innerHTML = `<label><input type="checkbox" /> <span>${esc(text)}</span></label>`; });
+    document.querySelectorAll(".steps li").forEach(node => { const rawText = node.textContent; const text = rawText.replace(/^\s*\d+[.)\s-]+/, ""); const content = text === rawText ? node.innerHTML : esc(text); node.innerHTML = `<label><input type="checkbox" /> <span>${content}</span></label>`; });
     decorateWorkspace();
     decorateNewFeatures();
     decorateFormRelatedEditor();
@@ -791,8 +799,23 @@
     if (state.richSelection?.id === editorId) {
       const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(state.richSelection.range);
     }
-    try { document.execCommand(command, false, value); } catch { /* Unsupported browser command; leave content unchanged. */ }
+    const wasHighlighted = command === "hiliteColor" && richSelectionHasHighlight(editor);
+    try { document.execCommand(command, false, command === "hiliteColor" && wasHighlighted ? "transparent" : value); } catch { /* Unsupported browser command; leave content unchanged. */ }
+    if (command === "hiliteColor") setRichToolPressed(editorId, command, !wasHighlighted);
     rememberRichSelection(editor);
+  }
+  function richSelectionHasHighlight(editor) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !editor.contains(selection.anchorNode)) return false;
+    const node = selection.anchorNode.nodeType === Node.TEXT_NODE ? selection.anchorNode.parentElement : selection.anchorNode;
+    if (node?.closest("mark,[style*='background']")) return true;
+    return Boolean(selection.getRangeAt(0).cloneContents().querySelector?.("mark,[style*='background']"));
+  }
+  function setRichToolPressed(editorId, command, pressed) {
+    const tool = document.querySelector(`button[data-rich-command="${CSS.escape(command)}"][data-rich-editor="${CSS.escape(editorId)}"]`);
+    if (!tool) return;
+    tool.setAttribute("aria-pressed", String(Boolean(pressed)));
+    tool.classList.toggle("is-active", Boolean(pressed));
   }
   function parseTagsInput(event) {
     const input = event.target; if (event.key !== "Enter") return; event.preventDefault(); const value = input.value.trim(); if (!value) return; const editor = input.closest(".tag-input"); if (editor.querySelector(`[data-remove-tag="${CSS.escape(value)}"]`)) return; const tag = document.createElement("span"); tag.className = "tag"; tag.innerHTML = `${esc(value)} <button type="button" data-remove-tag="${esc(value)}" aria-label="Xóa tag">×</button>`; editor.insertBefore(tag, input); input.value = "";
